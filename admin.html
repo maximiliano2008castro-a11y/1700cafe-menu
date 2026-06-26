@@ -543,7 +543,10 @@ async function saveMenu(d){
   if(!s){
     _globalMenu=d;
     [1,2,3].forEach(n=>{if(_branchData[n])_branchData[n].items=d;});
-    return Promise.all([1,2,3].map(n=>_fsPatch('sucursales/'+n,{items:d},true)));
+    return Promise.all([
+      _fsPatch('cafe/menu',{items:d},true),
+      ...[1,2,3].map(n=>_fsPatch('sucursales/'+n,{items:d},true)),
+    ]);
   }
   if(!_branchData[s])_branchData[s]={};_branchData[s].items=d;
   return _fsPatch('sucursales/'+s,{items:d},true);
@@ -553,7 +556,10 @@ async function saveCats(d){
   if(!s){
     _globalCats=d;
     [1,2,3].forEach(n=>{if(_branchData[n])_branchData[n].cats=d;});
-    return Promise.all([1,2,3].map(n=>_fsPatch('sucursales/'+n,{cats:d},true)));
+    return Promise.all([
+      _fsPatch('cafe/menu',{cats:d},true),
+      ...[1,2,3].map(n=>_fsPatch('sucursales/'+n,{cats:d},true)),
+    ]);
   }
   if(!_branchData[s])_branchData[s]={};_branchData[s].cats=d;
   return _fsPatch('sucursales/'+s,{cats:d},true);
@@ -563,7 +569,10 @@ async function saveHiddenCats(d){
   if(!s){
     _globalHiddenCats=d;
     [1,2,3].forEach(n=>{if(_branchData[n])_branchData[n].hiddenCats=d;});
-    return Promise.all([1,2,3].map(n=>_fsPatch('sucursales/'+n,{hiddenCats:d},true)));
+    return Promise.all([
+      _fsPatch('cafe/menu',{hiddenCats:d},true),
+      ...[1,2,3].map(n=>_fsPatch('sucursales/'+n,{hiddenCats:d},true)),
+    ]);
   }
   if(!_branchData[s])_branchData[s]={};_branchData[s].hiddenCats=d;
   return _fsPatch('sucursales/'+s,{hiddenCats:d},true);
@@ -608,10 +617,11 @@ async function loadAllData(){
     _fsGet('sucursales/1'),_fsGet('sucursales/2'),_fsGet('sucursales/3'),
     _fsGet('cafe/users'),
   ]);
-  _globalMenu=gD?.items||DEFAULT_MENU;
-  _globalCats=gD?.cats||DEFAULT_CATS_ARR;
-  _globalHiddenCats=gD?.hiddenCats||[];
-  if(!gD)_fsPatch('cafe/menu',{items:DEFAULT_MENU,cats:DEFAULT_CATS_ARR,hiddenCats:[]});
+  // cafe/menu puede estar vacío si las sucursales ya tienen datos propios — usar suc1 como referencia global
+  _globalMenu=gD?.items||s1?.items||DEFAULT_MENU;
+  _globalCats=gD?.cats||s1?.cats||DEFAULT_CATS_ARR;
+  _globalHiddenCats=gD?.hiddenCats||s1?.hiddenCats||[];
+  if(!gD)_fsPatch('cafe/menu',{items:_globalMenu,cats:_globalCats,hiddenCats:_globalHiddenCats});
   [s1,s2,s3].forEach((doc,i)=>{
     const s=i+1;
     if(doc){
