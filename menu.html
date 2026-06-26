@@ -1171,16 +1171,19 @@ async function renderMenu(){
   document.querySelectorAll('.menu-section').forEach(s=>obs.observe(s));
 }
 
-// Listener en tiempo real — cualquier cambio en Firestore re-renderiza el menú
+// Renderizado inmediato con datos locales (el menú no queda en blanco)
+renderMenu();
+
+// Listeners en tiempo real — actualizan y re-renderizan cuando Firestore cambia
 let _renderTimer=null;
-function scheduleRender(){clearTimeout(_renderTimer);_renderTimer=setTimeout(()=>{_photosFb=null;renderMenu();},120);}
+function scheduleRender(){clearTimeout(_renderTimer);_renderTimer=setTimeout(()=>renderMenu(),150);}
 
 _db.collection('cafe').doc('menu').onSnapshot(doc=>{
   if(doc.exists)_menuFb=doc.data().items;
   scheduleRender();
 });
 _db.collection('cafe').doc('cats').onSnapshot(doc=>{
-  if(doc.exists)CAT_ORDER=doc.data().list;
+  if(doc.exists&&doc.data().list)CAT_ORDER=doc.data().list;
   scheduleRender();
 });
 _db.collection('cafe').doc('availability').onSnapshot(doc=>{
