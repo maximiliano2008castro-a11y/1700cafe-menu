@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Menú — 1700 Café de Altura</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     :root{
       --rojo:#c44040; --rojo-dark:#5a0e0e;
@@ -870,13 +868,27 @@ function renderCatBanner(cat){
   </div>`;
 }
 
-// ── Firebase + caché ──
-firebase.initializeApp({apiKey:"AIzaSyAbUnTt_q5fuY-OMFjoNW5SBgVP0DoAMGo",authDomain:"cafe-a5b33.firebaseapp.com",projectId:"cafe-a5b33",storageBucket:"cafe-a5b33.firebasestorage.app",messagingSenderId:"232025989864",appId:"1:232025989864:web:4f1610ad33c64bc51adf5d"});
-const _db=firebase.firestore();
+// ── Firestore REST API (sin SDK — carga instantánea) ──
+const _FS='https://firestore.googleapis.com/v1/projects/cafe-a5b33/databases/(default)/documents';
+function _fsParse(v){
+  if(!v)return null;
+  if('stringValue'  in v)return v.stringValue;
+  if('integerValue' in v)return Number(v.integerValue);
+  if('doubleValue'  in v)return v.doubleValue;
+  if('booleanValue' in v)return v.booleanValue;
+  if('nullValue'    in v)return null;
+  if('arrayValue'   in v)return(v.arrayValue.values||[]).map(_fsParse);
+  if('mapValue'     in v)return _fsDoc(v.mapValue.fields);
+  return null;
+}
+function _fsDoc(fields){return fields?Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,_fsParse(v)])):{}}
+async function _fsGet(path){try{const r=await fetch(`${_FS}/${path}`);if(!r.ok)return null;return _fsDoc((await r.json()).fields);}catch{return null;}}
+async function _fsList(col){try{const r=await fetch(`${_FS}/${col}`);if(!r.ok)return[];const d=await r.json();return(d.documents||[]).map(doc=>({_id:doc.name.split('/').pop(),..._fsDoc(doc.fields)}));}catch{return[];}}
+
 let _menuFb=null,_availFb={},_photosFb=null;
 function loadMenu(){return _menuFb||DEFAULT_MENU;}
 function getSucDisabledMenu(suc){return Array.from(_availFb['suc'+suc]||[]);}
-async function getAllPhotos(){if(_photosFb!==null)return _photosFb;const snap=await _db.collection('photos').get();_photosFb={};snap.forEach(doc=>{_photosFb[doc.id]=doc.data().d;});return _photosFb;}
+async function getAllPhotos(){if(_photosFb!==null)return _photosFb;const docs=await _fsList('photos');_photosFb={};docs.forEach(d=>{_photosFb[d._id]=d.d;});return _photosFb;}
 
 /* ── Bebidas Calientes / Infusiones: animación + tabla tamaños ── */
 function renderSizes(cat,items,photos){
@@ -1171,25 +1183,29 @@ async function renderMenu(){
   document.querySelectorAll('.menu-section').forEach(s=>obs.observe(s));
 }
 
-// Renderizado inmediato con datos locales (el menú no queda en blanco)
+// Renderizado inmediato (menú visible al instante con datos locales)
 renderMenu();
 
-// Listeners en tiempo real — actualizan y re-renderizan cuando Firestore cambia
-let _renderTimer=null;
-function scheduleRender(){clearTimeout(_renderTimer);_renderTimer=setTimeout(()=>renderMenu(),150);}
+// Carga datos de Firestore y re-renderiza
+async function loadFromFirestore(){
+  const [menuDoc,catsDoc,availDoc]=await Promise.all([
+    _fsGet('cafe/menu'),
+    _fsGet('cafe/cats'),
+    _fsGet('cafe/availability'),
+  ]);
+  let changed=false;
+  if(menuDoc?.items){_menuFb=menuDoc.items;changed=true;}
+  if(catsDoc?.list){CAT_ORDER=catsDoc.list;changed=true;}
+  if(availDoc){_availFb=availDoc;changed=true;}
+  if(changed)renderMenu();
+}
+loadFromFirestore();
 
-_db.collection('cafe').doc('menu').onSnapshot(doc=>{
-  if(doc.exists)_menuFb=doc.data().items;
-  scheduleRender();
-});
-_db.collection('cafe').doc('cats').onSnapshot(doc=>{
-  if(doc.exists&&doc.data().list)CAT_ORDER=doc.data().list;
-  scheduleRender();
-});
-_db.collection('cafe').doc('availability').onSnapshot(doc=>{
-  if(doc.exists)_availFb=doc.data();
-  scheduleRender();
-});
+// Polling cada 15 segundos para reflejar cambios del admin
+setInterval(async()=>{
+  const availDoc=await _fsGet('cafe/availability');
+  if(availDoc){_availFb=availDoc;renderMenu();}
+},15000);
 </script>
 </body>
 </html>
