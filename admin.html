@@ -537,22 +537,34 @@ function loadHiddenCats(){const s=getActiveSuc();return s?(_branchData[s]?.hidde
 function getUsers(){return _usersCache||DEFAULT_USERS;}
 function getSucDisabled(suc){return Array.from(_branchData[suc]?.disabled||[]);}
 
-// Escritura — respeta el contexto activo (null = global)
+// Escritura — "Todas" escribe a las 3 sucursales simultáneamente
 async function saveMenu(d){
   const s=getActiveSuc();
-  if(!s){_globalMenu=d;return _fsPatch('cafe/menu',{items:d},true);}
+  if(!s){
+    _globalMenu=d;
+    [1,2,3].forEach(n=>{if(_branchData[n])_branchData[n].items=d;});
+    return Promise.all([1,2,3].map(n=>_fsPatch('sucursales/'+n,{items:d},true)));
+  }
   if(!_branchData[s])_branchData[s]={};_branchData[s].items=d;
   return _fsPatch('sucursales/'+s,{items:d},true);
 }
 async function saveCats(d){
   const s=getActiveSuc();
-  if(!s){_globalCats=d;return _fsPatch('cafe/menu',{cats:d},true);}
+  if(!s){
+    _globalCats=d;
+    [1,2,3].forEach(n=>{if(_branchData[n])_branchData[n].cats=d;});
+    return Promise.all([1,2,3].map(n=>_fsPatch('sucursales/'+n,{cats:d},true)));
+  }
   if(!_branchData[s])_branchData[s]={};_branchData[s].cats=d;
   return _fsPatch('sucursales/'+s,{cats:d},true);
 }
 async function saveHiddenCats(d){
   const s=getActiveSuc();
-  if(!s){_globalHiddenCats=d;return _fsPatch('cafe/menu',{hiddenCats:d},true);}
+  if(!s){
+    _globalHiddenCats=d;
+    [1,2,3].forEach(n=>{if(_branchData[n])_branchData[n].hiddenCats=d;});
+    return Promise.all([1,2,3].map(n=>_fsPatch('sucursales/'+n,{hiddenCats:d},true)));
+  }
   if(!_branchData[s])_branchData[s]={};_branchData[s].hiddenCats=d;
   return _fsPatch('sucursales/'+s,{hiddenCats:d},true);
 }
