@@ -313,10 +313,10 @@
       </select>
     </div>
     <nav class="sidebar-nav" id="sidebarNav">
-      <button class="nav-item active" onclick="showPage('inicio',this)"><span class="ni">📊</span> Inicio</button>
-      <button class="nav-item" onclick="showPage('vista',this)"><span class="ni">👁</span> Vista del Menú</button>
-      <button class="nav-item admin-only" onclick="showPage('items',this)"><span class="ni">🍽️</span> Platillos</button>
-      <button class="nav-item admin-only" onclick="showPage('categories',this)"><span class="ni">🗂️</span> Categorías</button>
+      <button class="nav-item active admin-only" onclick="showPage('inicio',this)"><span class="ni">📊</span> Inicio</button>
+      <button class="nav-item no-trabajador" onclick="showPage('vista',this)"><span class="ni">👁</span> Vista del Menú</button>
+      <button class="nav-item no-trabajador" onclick="showPage('items',this)"><span class="ni">🍽️</span> Platillos</button>
+      <button class="nav-item no-trabajador" onclick="showPage('categories',this)"><span class="ni">🗂️</span> Categorías</button>
       <button class="nav-item disp-nav" style="display:none" onclick="showPage('disponibilidad',this)"><span class="ni">✅</span> Disponibilidad</button>
       <button class="nav-item admin-only" onclick="showPage('usuarios',this)"><span class="ni">👥</span> Usuarios</button>
     </nav>
@@ -362,8 +362,11 @@
     <!-- PLATILLOS (tabla) -->
     <div id="page-items" class="page">
       <div class="page-header">
-        <div><h2>Platillos</h2><p>Lista completa del menú</p></div>
-        <button class="btn btn-primary" onclick="openModal()">+ Nuevo platillo</button>
+        <div><h2>Platillos</h2><p id="itemsContext" style="color:var(--muted);font-size:.82rem">Todas las sucursales</p></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-ghost btn-sm apply-all-btn admin-only" onclick="confirmApplyToAll()" style="display:none">↓ Aplicar a todas las sucursales</button>
+          <button class="btn btn-primary" onclick="openModal()">+ Nuevo platillo</button>
+        </div>
       </div>
       <div class="toolbar">
         <input type="search" id="searchInput" placeholder="🔍  Buscar..." oninput="renderTable()"/>
@@ -381,8 +384,11 @@
     <!-- CATEGORÍAS -->
     <div id="page-categories" class="page">
       <div class="page-header">
-        <div><h2>Categorías</h2><p>Secciones del menú</p></div>
-        <button class="btn btn-primary" onclick="openCatModal()">+ Nueva categoría</button>
+        <div><h2>Categorías</h2><p id="catsContext" style="color:var(--muted);font-size:.82rem">Todas las sucursales</p></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-ghost btn-sm apply-all-btn admin-only" onclick="confirmApplyToAll()" style="display:none">↓ Aplicar a todas las sucursales</button>
+          <button class="btn btn-primary" onclick="openCatModal()">+ Nueva categoría</button>
+        </div>
       </div>
       <div class="cat-list" id="catList"></div>
     </div>
@@ -398,8 +404,8 @@
     <!-- USUARIOS (admin) -->
     <div id="page-usuarios" class="page">
       <div class="page-header">
-        <div><h2>Usuarios</h2><p>Gerentes por sucursal</p></div>
-        <button class="btn btn-primary" onclick="openUserModal()">+ Nuevo gerente</button>
+        <div><h2>Usuarios</h2><p>Gerentes y trabajadores por sucursal</p></div>
+        <button class="btn btn-primary" onclick="openUserModal()">+ Nuevo usuario</button>
       </div>
       <div class="table-wrap">
         <table><thead><tr><th>Usuario</th><th>Nombre</th><th>Sucursal</th><th>Contraseña</th><th>Acciones</th></tr></thead>
@@ -414,12 +420,18 @@
 <!-- MODAL USUARIO -->
 <div class="modal-backdrop" id="userModal">
   <div class="modal" style="max-width:420px">
-    <div class="modal-header"><h3 id="userModalTitle">Nuevo gerente</h3><button class="modal-close" onclick="closeUserModal()">✕</button></div>
+    <div class="modal-header"><h3 id="userModalTitle">Nuevo usuario</h3><button class="modal-close" onclick="closeUserModal()">✕</button></div>
     <div class="modal-body">
       <input type="hidden" id="fUserId"/>
       <div class="form-group"><label>Nombre completo *</label><input type="text" id="fUserName" placeholder="Ej. María García"/></div>
       <div class="form-group"><label>Usuario *</label><input type="text" id="fUserUsername" placeholder="Ej. gerente1" autocomplete="off"/></div>
       <div class="form-group"><label>Contraseña *</label><input type="password" id="fUserPwd" placeholder="Mínimo 6 caracteres" autocomplete="new-password"/><small id="fUserPwdHint" style="color:var(--muted);font-size:.75rem;margin-top:3px;display:block"></small></div>
+      <div class="form-group"><label>Rol *</label>
+        <select id="fUserRole">
+          <option value="gerente">Gerente — puede editar platillos, categorías y disponibilidad</option>
+          <option value="trabajador">Trabajador — solo puede modificar disponibilidad</option>
+        </select>
+      </div>
       <div class="form-group"><label>Sucursal *</label>
         <select id="fUserSuc">
           <option value="1">Ciudad del Sol</option>
@@ -513,23 +525,62 @@ async function _fsDelete(p){const r=await fetch(`${_FS}/${p}?${_FK}`,{method:'DE
 
 const showToast=msg=>{const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800);};
 
-// Caché en memoria
-let _menuCache=null,_catsCache=null,_hiddenCatsCache=[],_photosCache=null,_usersCache=null,_availCache={},_authReady=false;
+// Caché en memoria — estructura por sucursal
+let _globalMenu=null,_globalCats=null,_globalHiddenCats=[];
+let _branchData={1:null,2:null,3:null}; // {items,cats,hiddenCats,disabled}
+let _photosCache=null,_usersCache=null,_authReady=false;
 
-// Lecturas sincrónicas del caché
-function loadMenu(){return _menuCache||DEFAULT_MENU;}
-function loadCats(){return _catsCache||[];}
-function loadHiddenCats(){return _hiddenCatsCache;}
+// Lectura según contexto activo
+function loadMenu(){const s=getActiveSuc();return s?(_branchData[s]?.items||_globalMenu||DEFAULT_MENU):(_globalMenu||DEFAULT_MENU);}
+function loadCats(){const s=getActiveSuc();return s?(_branchData[s]?.cats||_globalCats||DEFAULT_CATS_ARR):(_globalCats||DEFAULT_CATS_ARR);}
+function loadHiddenCats(){const s=getActiveSuc();return s?(_branchData[s]?.hiddenCats||_globalHiddenCats):_globalHiddenCats;}
 function getUsers(){return _usersCache||DEFAULT_USERS;}
-function getSucDisabled(suc){return Array.from(_availCache['suc'+suc]||[]);}
+function getSucDisabled(suc){return Array.from(_branchData[suc]?.disabled||[]);}
 
-// Escritura a Firestore vía REST + actualización del caché
-async function saveMenu(d){_menuCache=d;return _fsPatch('cafe/menu',{items:d});}
-async function saveCats(d){_catsCache=d;return _fsPatch('cafe/cats',{list:d},true);}
-async function saveHiddenCats(d){_hiddenCatsCache=d;return _fsPatch('cafe/cats',{hidden:d},true);}
+// Escritura — respeta el contexto activo (null = global)
+async function saveMenu(d){
+  const s=getActiveSuc();
+  if(!s){_globalMenu=d;return _fsPatch('cafe/menu',{items:d},true);}
+  if(!_branchData[s])_branchData[s]={};_branchData[s].items=d;
+  return _fsPatch('sucursales/'+s,{items:d},true);
+}
+async function saveCats(d){
+  const s=getActiveSuc();
+  if(!s){_globalCats=d;return _fsPatch('cafe/menu',{cats:d},true);}
+  if(!_branchData[s])_branchData[s]={};_branchData[s].cats=d;
+  return _fsPatch('sucursales/'+s,{cats:d},true);
+}
+async function saveHiddenCats(d){
+  const s=getActiveSuc();
+  if(!s){_globalHiddenCats=d;return _fsPatch('cafe/menu',{hiddenCats:d},true);}
+  if(!_branchData[s])_branchData[s]={};_branchData[s].hiddenCats=d;
+  return _fsPatch('sucursales/'+s,{hiddenCats:d},true);
+}
 async function saveUsers(u){_usersCache=u;return _fsPatch('cafe/users',{list:u});}
-async function setSucDisabled(suc,ids){_availCache['suc'+suc]=ids;return _fsPatch('cafe/availability',{['suc'+suc]:ids},true);}
-function toggleDisabled(suc,itemId){const ids=getSucDisabled(suc);const i=ids.indexOf(itemId);if(i>=0)ids.splice(i,1);else ids.push(itemId);_availCache['suc'+suc]=ids;setSucDisabled(suc,ids);}
+async function setSucDisabled(suc,ids){
+  if(!_branchData[suc])_branchData[suc]={};
+  _branchData[suc].disabled=ids;
+  return _fsPatch('sucursales/'+suc,{disabled:ids},true);
+}
+function toggleDisabled(suc,itemId){
+  const ids=getSucDisabled(suc);const i=ids.indexOf(itemId);
+  if(i>=0)ids.splice(i,1);else ids.push(itemId);
+  if(!_branchData[suc])_branchData[suc]={};_branchData[suc].disabled=ids;
+}
+
+// Aplicar menú global a las 3 sucursales
+async function applyGlobalToAll(){
+  const items=_globalMenu||DEFAULT_MENU,cats=_globalCats||DEFAULT_CATS_ARR,hiddenCats=_globalHiddenCats;
+  await Promise.all([1,2,3].map(s=>{
+    if(!_branchData[s])_branchData[s]={};
+    Object.assign(_branchData[s],{items,cats,hiddenCats});
+    return _fsPatch('sucursales/'+s,{items,cats,hiddenCats},true);
+  }));
+  showToast('Menú aplicado a las 3 sucursales ✓');
+}
+function confirmApplyToAll(){
+  if(confirm('¿Aplicar el menú general a las 3 sucursales?\nSobreescribirá los cambios individuales de cada sucursal.'))applyGlobalToAll();
+}
 
 // Fotos
 async function getAllPhotos(){if(_photosCache!==null)return _photosCache;const docs=await _fsList('photos');_photosCache={};docs.forEach(d=>{_photosCache[d._id]=d.d;});return _photosCache;}
@@ -538,17 +589,26 @@ async function deletePhoto(id){if(_photosCache)delete _photosCache[String(id)];r
 
 // Carga inicial de datos
 async function loadAllData(){
-  const[mD,cD,uD,aD]=await Promise.all([
-    _fsGet('cafe/menu'),_fsGet('cafe/cats'),_fsGet('cafe/users'),_fsGet('cafe/availability'),
+  const[gD,s1,s2,s3,uD]=await Promise.all([
+    _fsGet('cafe/menu'),
+    _fsGet('sucursales/1'),_fsGet('sucursales/2'),_fsGet('sucursales/3'),
+    _fsGet('cafe/users'),
   ]);
-  _menuCache=mD?.items||DEFAULT_MENU;
-  if(!mD)_fsPatch('cafe/menu',{items:DEFAULT_MENU});
-  _catsCache=cD?.list||DEFAULT_CATS_ARR;
-  _hiddenCatsCache=cD?.hidden||[];
-  if(!cD)_fsPatch('cafe/cats',{list:DEFAULT_CATS_ARR,hidden:[]});
+  _globalMenu=gD?.items||DEFAULT_MENU;
+  _globalCats=gD?.cats||DEFAULT_CATS_ARR;
+  _globalHiddenCats=gD?.hiddenCats||[];
+  if(!gD)_fsPatch('cafe/menu',{items:DEFAULT_MENU,cats:DEFAULT_CATS_ARR,hiddenCats:[]});
+  [s1,s2,s3].forEach((doc,i)=>{
+    const s=i+1;
+    if(doc){
+      _branchData[s]={items:doc.items||_globalMenu,cats:doc.cats||_globalCats,hiddenCats:doc.hiddenCats||[],disabled:doc.disabled||[]};
+    } else {
+      _branchData[s]={items:[..._globalMenu],cats:[..._globalCats],hiddenCats:[],disabled:[]};
+      _fsPatch('sucursales/'+s,{items:_globalMenu,cats:_globalCats,hiddenCats:[],disabled:[]});
+    }
+  });
   _usersCache=uD?.list||DEFAULT_USERS;
   if(!uD)_fsPatch('cafe/users',{list:DEFAULT_USERS});
-  _availCache=aD||{};
 }
 
 // Pre-carga de usuarios para login
@@ -618,8 +678,25 @@ function updateMenuLinks(){
 function onAdminSucChange(){
   const val=document.getElementById('adminSucSelect').value;
   document.querySelectorAll('.disp-nav').forEach(el=>el.style.display=val?'':'none');
-  if(val)showPage('disponibilidad',document.querySelector('.disp-nav'));
+  updatePageContext();
   updateMenuLinks();
+  // Re-renderizar la página activa con el nuevo contexto
+  const ap=document.querySelector('.page.active')?.id;
+  if(ap==='page-items')renderTable();
+  else if(ap==='page-categories')renderCats();
+  else if(ap==='page-vista')renderVista();
+  else if(ap==='page-inicio')renderInicio();
+  else if(ap==='page-disponibilidad'&&val)renderDisp();
+}
+function updatePageContext(){
+  const s=getActiveSuc();
+  const label=s?SUC_NAMES[s]:'Todas las sucursales';
+  const itemsCtx=document.getElementById('itemsContext');
+  const catsCtx=document.getElementById('catsContext');
+  if(itemsCtx)itemsCtx.textContent=label;
+  if(catsCtx)catsCtx.textContent=label;
+  // Botón "Aplicar a todas" visible solo en modo global (sin sucursal seleccionada)
+  document.querySelectorAll('.apply-all-btn').forEach(btn=>btn.style.display=s?'none':'');
 }
 // Devuelve sucursal activa (admin con selector, o gerente)
 function getActiveSuc(){
@@ -652,19 +729,20 @@ async function onDispToggle(itemId,cb){
 
 // ── Render Usuarios ──
 function renderUsers(){
+  const roleLabel={gerente:'Gerente',trabajador:'Trabajador'};
   const users=getUsers().filter(u=>u.role!=='admin');
   const html=users.map(u=>`
     <tr>
       <td><strong>${u.username}</strong></td>
       <td>${u.name}</td>
       <td><span class="suc-tag">${SUC_NAMES[u.sucursal]||'-'}</span></td>
-      <td><span style="color:var(--muted);font-size:.78rem">••••••</span></td>
+      <td><span style="background:rgba(139,21,21,.1);color:var(--rojo);font-size:.72rem;padding:2px 8px;border-radius:20px;font-weight:600">${roleLabel[u.role]||u.role}</span></td>
       <td><div style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick="editUser(${u.id})">✏️ Editar</button>
         <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})">🗑 Eliminar</button>
       </div></td>
     </tr>`).join('');
-  document.getElementById('usersBody').innerHTML=html||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No hay gerentes registrados</td></tr>';
+  document.getElementById('usersBody').innerHTML=html||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No hay usuarios registrados</td></tr>';
 }
 
 let _editUserId=null;
@@ -675,6 +753,7 @@ function openUserModal(id){
   document.getElementById('fUserUsername').value='';
   document.getElementById('fUserPwd').value='';
   document.getElementById('fUserPwdHint').textContent='';
+  document.getElementById('fUserRole').value='gerente';
   document.getElementById('fUserSuc').value='1';
   if(id){
     const u=getUsers().find(x=>x.id===id);
@@ -682,10 +761,11 @@ function openUserModal(id){
       document.getElementById('fUserName').value=u.name;
       document.getElementById('fUserUsername').value=u.username;
       document.getElementById('fUserSuc').value=u.sucursal;
+      document.getElementById('fUserRole').value=u.role||'gerente';
       document.getElementById('fUserPwdHint').textContent='Deja en blanco para no cambiar la contraseña';
-      document.getElementById('userModalTitle').textContent='Editar gerente';
+      document.getElementById('userModalTitle').textContent='Editar usuario';
     }
-  } else { document.getElementById('userModalTitle').textContent='Nuevo gerente'; }
+  } else { document.getElementById('userModalTitle').textContent='Nuevo usuario'; }
   document.getElementById('userModal').classList.add('open');
 }
 function closeUserModal(){document.getElementById('userModal').classList.remove('open');}
@@ -694,25 +774,26 @@ async function saveUser(){
   const username=document.getElementById('fUserUsername').value.trim();
   const pwd=document.getElementById('fUserPwd').value;
   const suc=parseInt(document.getElementById('fUserSuc').value);
+  const role=document.getElementById('fUserRole').value;
   if(!name||!username){showToast('Nombre y usuario son obligatorios');return;}
   const users=getUsers();
   if(_editUserId){
     const u=users.find(x=>x.id===_editUserId);
     if(!u)return;
-    u.name=name;u.username=username;u.sucursal=suc;
+    u.name=name;u.username=username;u.sucursal=suc;u.role=role;
     if(pwd){if(pwd.length<6){showToast('Contraseña mínimo 6 caracteres');return;}u.hash=await hashStr(pwd);}
   } else {
     if(!pwd||pwd.length<6){showToast('Contraseña mínimo 6 caracteres');return;}
     if(users.find(u=>u.username===username)){showToast('Ese usuario ya existe');return;}
-    users.push({id:Date.now(),username,hash:await hashStr(pwd),role:'gerente',sucursal:suc,name});
+    users.push({id:Date.now(),username,hash:await hashStr(pwd),role,sucursal:suc,name});
   }
-  saveUsers(users);renderUsers();closeUserModal();showToast('Gerente guardado');
+  saveUsers(users);renderUsers();closeUserModal();showToast('Usuario guardado');
 }
 function editUser(id){openUserModal(id);}
 function deleteUser(id){
-  if(!confirm('¿Eliminar este gerente?'))return;
+  if(!confirm('¿Eliminar este usuario?'))return;
   const users=getUsers().filter(u=>u.id!==id);
-  saveUsers(users);renderUsers();showToast('Gerente eliminado');
+  saveUsers(users);renderUsers();showToast('Usuario eliminado');
 }
 
 // ── Data ──
@@ -1464,26 +1545,36 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeC
 
 async function init(){
   const session=getSession();
-  document.getElementById('sidebarRole').textContent=session.role==='admin'?'Administrador':'Gerente — '+SUC_NAMES[session.sucursal];
+  const role=session.role||'trabajador';
+  const roleLabel={admin:'Administrador',gerente:'Gerente',trabajador:'Trabajador'}[role]||role;
+  const sucLabel=role!=='admin'?' — '+SUC_NAMES[session.sucursal]:'';
+  document.getElementById('sidebarRole').textContent=roleLabel+sucLabel;
   document.getElementById('sidebarUser').textContent=session.username;
-  // Mostrar estructura de sidebar inmediatamente, sin esperar datos
-  if(session.role==='admin'){
+
+  if(role==='admin'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='');
+    document.querySelectorAll('.no-trabajador').forEach(el=>el.style.display='');
     document.getElementById('sucSelector').style.display='';
     document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='none');
-    updateMenuLinks();
+  } else if(role==='gerente'){
+    document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
+    document.querySelectorAll('.no-trabajador').forEach(el=>el.style.display='');
+    document.getElementById('sucSelector').style.display='none';
+    document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='');
   } else {
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
+    document.querySelectorAll('.no-trabajador').forEach(el=>el.style.display='none');
+    document.getElementById('sucSelector').style.display='none';
     document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='');
-    updateMenuLinks();
   }
-  // Cargar datos y renderizar
+  updateMenuLinks();
   await loadAllData();
-  if(session.role==='admin'){
-    renderInicio();renderTable();updateStorageBar();
+  if(role==='admin'){
+    renderInicio();renderTable();updateStorageBar();updatePageContext();
+  } else if(role==='gerente'){
+    showPage('items',document.querySelector('.no-trabajador'));
   } else {
-    const dispBtn=document.querySelector('.disp-nav');
-    showPage('disponibilidad',dispBtn);
+    showPage('disponibilidad',document.querySelector('.disp-nav'));
   }
 }
 

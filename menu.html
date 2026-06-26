@@ -886,9 +886,9 @@ function _fsDoc(fields){return fields?Object.fromEntries(Object.entries(fields).
 async function _fsGet(path){try{const r=await fetch(`${_FS}/${path}?${_FK}`);if(!r.ok)return null;return _fsDoc((await r.json()).fields);}catch{return null;}}
 async function _fsList(col){try{const r=await fetch(`${_FS}/${col}?${_FK}`);if(!r.ok)return[];const d=await r.json();return(d.documents||[]).map(doc=>({_id:doc.name.split('/').pop(),..._fsDoc(doc.fields)}));}catch{return[];}}
 
-let _menuFb=null,_availFb={},_photosFb=null;
+let _menuFb=null,_availFb=[],_catsFb=null,_hiddenCatsFb=[],_photosFb=null;
 function loadMenu(){return _menuFb||DEFAULT_MENU;}
-function getSucDisabledMenu(suc){return Array.from(_availFb['suc'+suc]||[]);}
+function getSucDisabledMenu(){return Array.from(_availFb||[]);}
 async function getAllPhotos(){if(_photosFb!==null)return _photosFb;const docs=await _fsList('photos');_photosFb={};docs.forEach(d=>{_photosFb[d._id]=d.d;});return _photosFb;}
 
 /* ── Bebidas Calientes / Infusiones: animación + tabla tamaños ── */
@@ -1132,7 +1132,7 @@ function showBranchSelector(){
 async function renderMenu(){
   const suc=getSucursal();
   if(!suc){showBranchSelector();return;}
-  const disabled=getSucDisabledMenu(suc);
+  const disabled=getSucDisabledMenu();
   const items=loadMenu().filter(i=>i.available&&!disabled.includes(i.id));
   const photos=await getAllPhotos();
   const main=document.getElementById('menuMain');
@@ -1187,25 +1187,31 @@ async function renderMenu(){
 // Renderizado inmediato (menú visible al instante con datos locales)
 renderMenu();
 
-// Carga datos de Firestore y re-renderiza
+// Carga datos de la sucursal desde Firestore y re-renderiza
 async function loadFromFirestore(){
-  const [menuDoc,catsDoc,availDoc]=await Promise.all([
+  const suc=getSucursal();
+  if(!suc)return;
+  const [branchDoc,globalDoc]=await Promise.all([
+    _fsGet('sucursales/'+suc),
     _fsGet('cafe/menu'),
-    _fsGet('cafe/cats'),
-    _fsGet('cafe/availability'),
   ]);
   let changed=false;
-  if(menuDoc?.items){_menuFb=menuDoc.items;changed=true;}
-  if(catsDoc?.list){CAT_ORDER=catsDoc.list;changed=true;}
-  if(availDoc){_availFb=availDoc;changed=true;}
+  // Datos de sucursal tienen prioridad; global como fallback
+  if(branchDoc?.items){_menuFb=branchDoc.items;changed=true;}
+  else if(globalDoc?.items){_menuFb=globalDoc.items;changed=true;}
+  if(branchDoc?.cats){CAT_ORDER=branchDoc.cats;changed=true;}
+  else if(globalDoc?.cats){CAT_ORDER=globalDoc.cats;changed=true;}
+  if(branchDoc?.hiddenCats){_hiddenCatsFb=branchDoc.hiddenCats;changed=true;}
+  if(branchDoc?.disabled!==undefined){_availFb=branchDoc.disabled||[];changed=true;}
   if(changed)renderMenu();
 }
 loadFromFirestore();
 
-// Polling cada 15 segundos para reflejar cambios del admin
+// Polling cada 15 segundos para reflejar cambios de disponibilidad
 setInterval(async()=>{
-  const availDoc=await _fsGet('cafe/availability');
-  if(availDoc){_availFb=availDoc;renderMenu();}
+  const suc=getSucursal();if(!suc)return;
+  const doc=await _fsGet('sucursales/'+suc);
+  if(doc?.disabled!==undefined){_availFb=doc.disabled||[];renderMenu();}
 },15000);
 </script>
 </body>
