@@ -245,6 +245,24 @@
     .view-btn{position:fixed;bottom:26px;left:calc(var(--sidebar) + 26px);background:var(--oro);color:var(--cafe);padding:11px 20px;border-radius:999px;text-decoration:none;font-weight:700;font-size:.88rem;box-shadow:0 4px 18px rgba(200,135,42,.35);transition:transform .2s,box-shadow .2s;}
     .view-btn:hover{transform:translateY(-2px);box-shadow:0 8px 26px rgba(200,135,42,.45);}
 
+    /* ── Disponibilidad ── */
+    .disp-cat{margin-bottom:28px;}
+    .disp-cat-title{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--rojo);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(139,21,21,.1);}
+    .disp-item{background:#fff;border-radius:var(--radius);padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow);gap:12px;}
+    .disp-item.disabled{opacity:.55;}
+    .disp-item-name{font-weight:600;font-size:.9rem;}
+    .disp-item-cat{font-size:.76rem;color:var(--muted);margin-top:2px;}
+    .disp-toggle{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+    .disp-toggle span{font-size:.78rem;font-weight:600;}
+    .disp-toggle span.on{color:var(--success);}
+    .disp-toggle span.off{color:var(--danger);}
+
+    /* ── Usuarios ── */
+    .role-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.74rem;font-weight:600;}
+    .role-admin{background:#fef3c7;color:#92400e;}
+    .role-gerente{background:#dbeafe;color:#1e40af;}
+    .suc-tag{font-size:.8rem;color:var(--muted);}
+
     @media(max-width:768px){
       .main-content{margin-left:0;padding:18px 14px;}
       .view-btn{left:14px;}
@@ -264,10 +282,11 @@
   <div class="login-box">
     <div class="login-num">1700</div>
     <h2>Café de Altura</h2>
-    <p>Panel de administrador</p>
-    <input type="password" id="pwdInput" placeholder="Contraseña"/>
+    <p>Acceso al panel de gestión</p>
+    <input type="text" id="userInput" placeholder="Usuario" autocomplete="username" style="margin-bottom:8px"/>
+    <input type="password" id="pwdInput" placeholder="Contraseña" autocomplete="current-password"/>
     <button onclick="doLogin()">Entrar</button>
-    <p class="login-error" id="loginError">Contraseña incorrecta</p>
+    <p class="login-error" id="loginError">Usuario o contraseña incorrectos</p>
   </div>
 </div>
 
@@ -280,13 +299,26 @@
     <div class="sidebar-logo">
       <div class="logo-num">1700</div>
       <h1>Café de Altura</h1>
-      <p>Panel de administrador</p>
+      <p id="sidebarRole">Panel</p>
+      <p id="sidebarUser" style="font-size:.68rem;color:rgba(255,255,255,.5);margin-top:2px;"></p>
     </div>
-    <nav class="sidebar-nav">
+    <!-- Selector de sucursal (solo admin) -->
+    <div id="sucSelector" class="admin-only" style="padding:10px 12px 4px;display:none">
+      <label style="font-size:.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);display:block;margin-bottom:6px">Sucursal</label>
+      <select id="adminSucSelect" onchange="onAdminSucChange()" style="width:100%;padding:8px 10px;background:#3d0f0f;border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;font-family:'Inter',sans-serif;font-size:.82rem;cursor:pointer;outline:none">
+        <option value="" style="background:#3d0f0f;color:#fff">General (todas)</option>
+        <option value="1" style="background:#3d0f0f;color:#fff">Ciudad del Sol</option>
+        <option value="2" style="background:#3d0f0f;color:#fff">Basílica</option>
+        <option value="3" style="background:#3d0f0f;color:#fff">López Mateos Sur</option>
+      </select>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav">
       <button class="nav-item active" onclick="showPage('dashboard',this)"><span class="ni">📊</span> Dashboard</button>
       <button class="nav-item" onclick="showPage('vista',this)"><span class="ni">👁</span> Vista del Menú</button>
-      <button class="nav-item" onclick="showPage('items',this)"><span class="ni">🍽️</span> Platillos</button>
-      <button class="nav-item" onclick="showPage('categories',this)"><span class="ni">🗂️</span> Categorías</button>
+      <button class="nav-item admin-only admin-general" onclick="showPage('items',this)"><span class="ni">🍽️</span> Platillos</button>
+      <button class="nav-item admin-only admin-general" onclick="showPage('categories',this)"><span class="ni">🗂️</span> Categorías</button>
+      <button class="nav-item disp-nav" style="display:none" onclick="showPage('disponibilidad',this)"><span class="ni">✅</span> Disponibilidad</button>
+      <button class="nav-item admin-only admin-general" onclick="showPage('usuarios',this)"><span class="ni">👥</span> Usuarios</button>
     </nav>
     <div class="sidebar-footer">
       <button class="btn-logout" onclick="doLogout()">⬅ Cerrar sesión</button>
@@ -355,8 +387,52 @@
       <div class="cat-list" id="catList"></div>
     </div>
 
+    <!-- DISPONIBILIDAD (gerente) -->
+    <div id="page-disponibilidad" class="page">
+      <div class="page-header">
+        <div><h2>Disponibilidad</h2><p id="dispSubtitle">Activa o desactiva items en tu sucursal</p></div>
+      </div>
+      <div id="dispBody"></div>
+    </div>
+
+    <!-- USUARIOS (admin) -->
+    <div id="page-usuarios" class="page">
+      <div class="page-header">
+        <div><h2>Usuarios</h2><p>Gerentes por sucursal</p></div>
+        <button class="btn btn-primary" onclick="openUserModal()">+ Nuevo gerente</button>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Usuario</th><th>Nombre</th><th>Sucursal</th><th>Contraseña</th><th>Acciones</th></tr></thead>
+        <tbody id="usersBody"></tbody></table>
+      </div>
+    </div>
+
   </div>
-  <a href="menu.html" target="_blank" class="view-btn">☕ Ver menú público</a>
+  <a id="viewMenuBtn" href="menu.html" target="_blank" class="view-btn">☕ Ver menú público</a>
+</div>
+
+<!-- MODAL USUARIO -->
+<div class="modal-backdrop" id="userModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><h3 id="userModalTitle">Nuevo gerente</h3><button class="modal-close" onclick="closeUserModal()">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="fUserId"/>
+      <div class="form-group"><label>Nombre completo *</label><input type="text" id="fUserName" placeholder="Ej. María García"/></div>
+      <div class="form-group"><label>Usuario *</label><input type="text" id="fUserUsername" placeholder="Ej. gerente1" autocomplete="off"/></div>
+      <div class="form-group"><label>Contraseña *</label><input type="password" id="fUserPwd" placeholder="Mínimo 6 caracteres" autocomplete="new-password"/><small id="fUserPwdHint" style="color:var(--muted);font-size:.75rem;margin-top:3px;display:block"></small></div>
+      <div class="form-group"><label>Sucursal *</label>
+        <select id="fUserSuc">
+          <option value="1">Ciudad del Sol</option>
+          <option value="2">Basílica</option>
+          <option value="3">López Mateos Sur</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="closeUserModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveUser()">Guardar</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL PLATILLO -->
@@ -412,22 +488,180 @@
 <div id="toast"></div>
 
 <script>
-// ── Auth ──
-const PASSWORD_HASH='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
+// ── Auth & Sesión ──
+const HASH_ADMIN='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
+const HASH_GERENTE='ecfba551324356e5bd27b548adf36b728783f60d9b573d142caac7baad62be49';
+const DEFAULT_USERS=[
+  {id:1,username:'admin',hash:HASH_ADMIN,role:'admin',sucursal:null,name:'Administrador'},
+  {id:2,username:'gerente1',hash:HASH_GERENTE,role:'gerente',sucursal:1,name:'Gerente Ciudad del Sol'},
+  {id:3,username:'gerente2',hash:HASH_GERENTE,role:'gerente',sucursal:2,name:'Gerente Basílica'},
+  {id:4,username:'gerente3',hash:HASH_GERENTE,role:'gerente',sucursal:3,name:'Gerente López Mateos'},
+];
+const SUC_NAMES={1:'Ciudad del Sol',2:'Basílica',3:'López Mateos Sur'};
+
 async function hashStr(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
+function getUsers(){return JSON.parse(localStorage.getItem('cafeUsers')||'null')||DEFAULT_USERS;}
+function saveUsers(u){localStorage.setItem('cafeUsers',JSON.stringify(u));}
+function getSession(){return JSON.parse(sessionStorage.getItem('cafeSession')||'null');}
+function isAdmin(){return getSession()?.role==='admin';}
+function getSessionSuc(){return getSession()?.sucursal;}
+
 async function doLogin(){
+  const username=document.getElementById('userInput').value.trim();
   const h=await hashStr(document.getElementById('pwdInput').value);
-  if(h===PASSWORD_HASH){
-    sessionStorage.setItem('adminAuth','1');
+  const user=getUsers().find(u=>u.username===username&&u.hash===h);
+  if(user){
+    sessionStorage.setItem('cafeSession',JSON.stringify(user));
     document.getElementById('loginOverlay').style.display='none';
     document.getElementById('app').style.display='block';
     init();
   } else { document.getElementById('loginError').style.display='block'; }
 }
 document.getElementById('pwdInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-function doLogout(){sessionStorage.removeItem('adminAuth');location.reload();}
+document.getElementById('userInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('pwdInput').focus();});
+function doLogout(){sessionStorage.removeItem('cafeSession');location.reload();}
 function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('open');}
 function closeSidebar(){document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');}
+
+// ── Disponibilidad por sucursal ──
+function getSucDisabled(suc){return JSON.parse(localStorage.getItem('cafeSucDisabled_'+suc)||'[]');}
+function setSucDisabled(suc,ids){localStorage.setItem('cafeSucDisabled_'+suc,JSON.stringify(ids));}
+function toggleDisabled(suc,itemId){
+  let ids=getSucDisabled(suc);
+  const i=ids.indexOf(itemId);
+  if(i>=0)ids.splice(i,1);else ids.push(itemId);
+  setSucDisabled(suc,ids);
+}
+
+// ── Render Disponibilidad ──
+function renderDisp(){
+  const suc=getActiveSuc();
+  document.getElementById('dispSubtitle').textContent='Sucursal: '+SUC_NAMES[suc];
+  const disabled=getSucDisabled(suc);
+  const menu=loadMenu();
+  const cats=[...new Set(menu.map(i=>i.category))];
+  let html='';
+  cats.forEach(cat=>{
+    const items=menu.filter(i=>i.category===cat&&i.available!==false);
+    if(!items.length)return;
+    html+=`<div class="disp-cat"><div class="disp-cat-title">${cat}</div>`;
+    items.forEach(item=>{
+      const off=disabled.includes(item.id);
+      html+=`<div class="disp-item${off?' disabled':''}" id="disp-${item.id}">
+        <div><div class="disp-item-name">${item.name}</div></div>
+        <div class="disp-toggle">
+          <span class="${off?'off':'on'}">${off?'No disponible':'Disponible'}</span>
+          <label class="toggle"><input type="checkbox" ${off?'':'checked'} onchange="onDispToggle(${item.id},this)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  });
+  document.getElementById('dispBody').innerHTML=html;
+}
+// ── Admin: cambio de sucursal ──
+function updateMenuLinks(){
+  const suc=getActiveSuc();
+  const url='menu.html'+(suc?'?s='+suc:'');
+  document.getElementById('viewMenuBtn').href=url;
+  const vistaBtn=document.querySelector('a[href="menu.html"].btn');
+  if(vistaBtn)vistaBtn.href=url;
+}
+
+function onAdminSucChange(){
+  const val=document.getElementById('adminSucSelect').value;
+  const isGeneral=!val;
+  document.querySelectorAll('.admin-general').forEach(el=>el.style.display=isGeneral?'':'none');
+  document.querySelectorAll('.disp-nav').forEach(el=>el.style.display=isGeneral?'none':'');
+  if(!isGeneral){
+    const btn=document.querySelector('.disp-nav');
+    showPage('disponibilidad',btn);
+  } else {
+    showPage('dashboard',document.querySelector('.nav-item'));
+  }
+  updateMenuLinks();
+}
+// Devuelve sucursal activa (admin con selector, o gerente)
+function getActiveSuc(){
+  if(isAdmin()) return parseInt(document.getElementById('adminSucSelect')?.value)||null;
+  return getSessionSuc();
+}
+
+function onDispToggle(itemId,cb){
+  const suc=getActiveSuc();
+  toggleDisabled(suc,itemId);
+  const row=document.getElementById('disp-'+itemId);
+  const off=getSucDisabled(suc).includes(itemId);
+  row.classList.toggle('disabled',off);
+  row.querySelector('.disp-toggle span').className=off?'off':'on';
+  row.querySelector('.disp-toggle span').textContent=off?'No disponible':'Disponible';
+  showToast(off?'Item desactivado en tu sucursal':'Item activado en tu sucursal');
+}
+
+// ── Render Usuarios ──
+function renderUsers(){
+  const users=getUsers().filter(u=>u.role!=='admin');
+  const html=users.map(u=>`
+    <tr>
+      <td><strong>${u.username}</strong></td>
+      <td>${u.name}</td>
+      <td><span class="suc-tag">${SUC_NAMES[u.sucursal]||'-'}</span></td>
+      <td><span style="color:var(--muted);font-size:.78rem">••••••</span></td>
+      <td><div style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="editUser(${u.id})">✏️ Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})">🗑 Eliminar</button>
+      </div></td>
+    </tr>`).join('');
+  document.getElementById('usersBody').innerHTML=html||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No hay gerentes registrados</td></tr>';
+}
+
+let _editUserId=null;
+function openUserModal(id){
+  _editUserId=id||null;
+  document.getElementById('fUserId').value=id||'';
+  document.getElementById('fUserName').value='';
+  document.getElementById('fUserUsername').value='';
+  document.getElementById('fUserPwd').value='';
+  document.getElementById('fUserPwdHint').textContent='';
+  document.getElementById('fUserSuc').value='1';
+  if(id){
+    const u=getUsers().find(x=>x.id===id);
+    if(u){
+      document.getElementById('fUserName').value=u.name;
+      document.getElementById('fUserUsername').value=u.username;
+      document.getElementById('fUserSuc').value=u.sucursal;
+      document.getElementById('fUserPwdHint').textContent='Deja en blanco para no cambiar la contraseña';
+      document.getElementById('userModalTitle').textContent='Editar gerente';
+    }
+  } else { document.getElementById('userModalTitle').textContent='Nuevo gerente'; }
+  document.getElementById('userModal').classList.add('open');
+}
+function closeUserModal(){document.getElementById('userModal').classList.remove('open');}
+async function saveUser(){
+  const name=document.getElementById('fUserName').value.trim();
+  const username=document.getElementById('fUserUsername').value.trim();
+  const pwd=document.getElementById('fUserPwd').value;
+  const suc=parseInt(document.getElementById('fUserSuc').value);
+  if(!name||!username){showToast('Nombre y usuario son obligatorios');return;}
+  const users=getUsers();
+  if(_editUserId){
+    const u=users.find(x=>x.id===_editUserId);
+    if(!u)return;
+    u.name=name;u.username=username;u.sucursal=suc;
+    if(pwd){if(pwd.length<6){showToast('Contraseña mínimo 6 caracteres');return;}u.hash=await hashStr(pwd);}
+  } else {
+    if(!pwd||pwd.length<6){showToast('Contraseña mínimo 6 caracteres');return;}
+    if(users.find(u=>u.username===username)){showToast('Ese usuario ya existe');return;}
+    users.push({id:Date.now(),username,hash:await hashStr(pwd),role:'gerente',sucursal:suc,name});
+  }
+  saveUsers(users);renderUsers();closeUserModal();showToast('Gerente guardado');
+}
+function editUser(id){openUserModal(id);}
+function deleteUser(id){
+  if(!confirm('¿Eliminar este gerente?'))return;
+  const users=getUsers().filter(u=>u.id!==id);
+  saveUsers(users);renderUsers();showToast('Gerente eliminado');
+}
 
 // ── Data ──
 const DEFAULT_MENU=[
@@ -563,6 +797,8 @@ function showPage(name,btn){
   if(name==='items')renderTable();
   if(name==='categories')renderCats();
   if(name==='vista')renderVista();
+  if(name==='disponibilidad')renderDisp();
+  if(name==='usuarios')renderUsers();
   closeSidebar();
 }
 
@@ -1191,7 +1427,29 @@ document.getElementById('itemModal').addEventListener('click',e=>{if(e.target===
 document.getElementById('catModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCatModal();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeCatModal();}});
 
-async function init(){await migratePhotos();renderDashboard();renderTable();updateStorageBar();}
+async function init(){
+  await migratePhotos();
+  const session=getSession();
+  // Sidebar: nombre y rol
+  document.getElementById('sidebarRole').textContent=session.role==='admin'?'Administrador':'Gerente — '+SUC_NAMES[session.sucursal];
+  document.getElementById('sidebarUser').textContent=session.username;
+  // Mostrar/ocultar nav items según rol
+  if(session.role==='admin'){
+    document.querySelectorAll('.admin-only').forEach(el=>el.style.display='');
+    document.getElementById('sucSelector').style.display='';
+    // Disp nav oculto hasta que admin elija sucursal
+    document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='none');
+    renderDashboard();renderTable();updateStorageBar();
+    updateMenuLinks();
+  } else {
+    // Gerente: ocultar todo admin-only, mostrar solo disp-nav
+    document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
+    document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='');
+    const dispBtn=document.querySelector('.disp-nav');
+    showPage('disponibilidad',dispBtn);
+    updateMenuLinks();
+  }
+}
 
 if(sessionStorage.getItem('adminAuth')==='1'){
   document.getElementById('loginOverlay').style.display='none';

@@ -1087,9 +1087,40 @@ const SEP=`<div class="sep">
 </div>`;
 
 const SHOW_EYEBROW=new Set(["Bebidas Calientes","Infusiones","Desayunos","Expendio"]);
+const SUC_NAMES_MENU={1:'Ciudad del Sol',2:'Basílica',3:'López Mateos Sur'};
+
+// ── Sucursal ──
+function getSucursal(){
+  const p=new URLSearchParams(location.search).get('s');
+  if(p&&['1','2','3'].includes(p))return parseInt(p);
+  const ss=sessionStorage.getItem('cafeSuc');
+  return ss?parseInt(ss):null;
+}
+function setSucursal(s){sessionStorage.setItem('cafeSuc',s);const u=new URL(location);u.searchParams.set('s',s);history.replaceState({},'',u);renderMenu();}
+function getSucDisabledMenu(suc){return JSON.parse(localStorage.getItem('cafeSucDisabled_'+suc)||'[]');}
+
+function showBranchSelector(){
+  if(document.getElementById('branchOverlay'))return;
+  const el=document.createElement('div');
+  el.id='branchOverlay';
+  el.style.cssText='position:fixed;inset:0;z-index:900;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;';
+  el.innerHTML=`
+    <div style="font-family:\'Playfair Display\',serif;font-size:clamp(3rem,14vw,6rem);font-weight:700;font-style:italic;color:var(--oro-light);line-height:1;margin-bottom:8px">1700</div>
+    <div style="font-family:\'Lora\',serif;letter-spacing:5px;text-transform:uppercase;font-size:.85rem;color:var(--muted);margin-bottom:40px">Café de Altura</div>
+    <p style="font-size:.75rem;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:var(--muted);margin-bottom:20px">Selecciona tu sucursal</p>
+    <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px">
+      ${[1,2,3].map(s=>`<button onclick="setSucursal(${s});document.getElementById('branchOverlay').remove()" style="background:var(--bg-card);border:1px solid rgba(20,10,2,.12);border-radius:12px;padding:18px 24px;text-align:left;cursor:pointer;font-family:\'Inter\',sans-serif;transition:border-color .2s" onmouseover="this.style.borderColor=\'rgba(184,120,24,.5)\'" onmouseout="this.style.borderColor=\'rgba(20,10,2,.12)\'">
+        <div style="font-weight:700;font-size:.95rem;color:var(--text)">${SUC_NAMES_MENU[s]}</div>
+      </button>`).join('')}
+    </div>`;
+  document.body.prepend(el);
+}
 
 async function renderMenu(){
-  const items=loadMenu().filter(i=>i.available);
+  const suc=getSucursal();
+  if(!suc){showBranchSelector();return;}
+  const disabled=getSucDisabledMenu(suc);
+  const items=loadMenu().filter(i=>i.available&&!disabled.includes(i.id));
   const photos=await getAllPhotos();
   const main=document.getElementById('menuMain');
   const nav=document.getElementById('catNav');
@@ -1143,7 +1174,8 @@ async function renderMenu(){
 migratePhotos().then(()=>renderMenu());
 
 window.addEventListener('storage',e=>{
-  if(e.key==='cafeMenu'||e.key==='cafeCats')renderMenu();
+  const suc=getSucursal();
+  if(e.key==='cafeMenu'||e.key==='cafeCats'||e.key===('cafeSucDisabled_'+(suc||'')))renderMenu();
 });
 </script>
 </body>
