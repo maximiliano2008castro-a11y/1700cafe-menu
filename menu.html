@@ -870,6 +870,7 @@ function renderCatBanner(cat){
 
 // ── Firestore REST API (sin SDK — carga instantánea) ──
 const _FS='https://firestore.googleapis.com/v1/projects/cafe-a5b33/databases/(default)/documents';
+const _FK='key=AIzaSyAbUnTt_q5fuY-OMFjoNW5SBgVP0DoAMGo';
 function _fsParse(v){
   if(!v)return null;
   if('stringValue'  in v)return v.stringValue;
@@ -882,8 +883,8 @@ function _fsParse(v){
   return null;
 }
 function _fsDoc(fields){return fields?Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,_fsParse(v)])):{}}
-async function _fsGet(path){try{const r=await fetch(`${_FS}/${path}`);if(!r.ok)return null;return _fsDoc((await r.json()).fields);}catch{return null;}}
-async function _fsList(col){try{const r=await fetch(`${_FS}/${col}`);if(!r.ok)return[];const d=await r.json();return(d.documents||[]).map(doc=>({_id:doc.name.split('/').pop(),..._fsDoc(doc.fields)}));}catch{return[];}}
+async function _fsGet(path){try{const r=await fetch(`${_FS}/${path}?${_FK}`);if(!r.ok)return null;return _fsDoc((await r.json()).fields);}catch{return null;}}
+async function _fsList(col){try{const r=await fetch(`${_FS}/${col}?${_FK}`);if(!r.ok)return[];const d=await r.json();return(d.documents||[]).map(doc=>({_id:doc.name.split('/').pop(),..._fsDoc(doc.fields)}));}catch{return[];}}
 
 let _menuFb=null,_availFb={},_photosFb=null;
 function loadMenu(){return _menuFb||DEFAULT_MENU;}

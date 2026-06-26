@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Admin — 1700 Café de Altura</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lora:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     :root{
       --rojo:#8B1515;--rojo-dark:#5a0e0e;--rojo-mid:#A01C1C;
@@ -501,9 +499,18 @@ const DEFAULT_USERS=[
 ];
 const SUC_NAMES={1:'Ciudad del Sol',2:'Basílica',3:'López Mateos Sur'};
 
-// ── Firebase ──
-firebase.initializeApp({apiKey:"AIzaSyAbUnTt_q5fuY-OMFjoNW5SBgVP0DoAMGo",authDomain:"cafe-a5b33.firebaseapp.com",projectId:"cafe-a5b33",storageBucket:"cafe-a5b33.firebasestorage.app",messagingSenderId:"232025989864",appId:"1:232025989864:web:4f1610ad33c64bc51adf5d"});
-const db=firebase.firestore();
+// ── Firestore REST API (sin SDK — carga instantánea) ──
+const _FS='https://firestore.googleapis.com/v1/projects/cafe-a5b33/databases/(default)/documents';
+const _FK='key=AIzaSyAbUnTt_q5fuY-OMFjoNW5SBgVP0DoAMGo';
+function _fpv(v){if(!v)return null;if('stringValue'in v)return v.stringValue;if('integerValue'in v)return Number(v.integerValue);if('doubleValue'in v)return v.doubleValue;if('booleanValue'in v)return v.booleanValue;if('nullValue'in v)return null;if('arrayValue'in v)return(v.arrayValue.values||[]).map(_fpv);if('mapValue'in v)return _fpd(v.mapValue.fields);return null;}
+function _fpd(f){return f?Object.fromEntries(Object.entries(f).map(([k,v])=>[k,_fpv(v)])):{}}
+function _fen(v){if(v===null||v===undefined)return{nullValue:null};if(typeof v==='boolean')return{booleanValue:v};if(typeof v==='number')return Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v};if(typeof v==='string')return{stringValue:v};if(Array.isArray(v))return{arrayValue:{values:v.map(_fen)}};if(typeof v==='object')return{mapValue:{fields:Object.fromEntries(Object.entries(v).map(([k,w])=>[k,_fen(w)]))}};return{nullValue:null};}
+function _fb(data){return{fields:Object.fromEntries(Object.entries(data).map(([k,v])=>[k,_fen(v)]))}}
+async function _fsGet(p){try{const r=await fetch(`${_FS}/${p}?${_FK}`);if(!r.ok)return null;return _fpd((await r.json()).fields);}catch{return null;}}
+async function _fsList(c){try{const r=await fetch(`${_FS}/${c}?${_FK}`);if(!r.ok)return[];const d=await r.json();return(d.documents||[]).map(doc=>({_id:doc.name.split('/').pop(),..._fpd(doc.fields)}));}catch{return[];}}
+async function _fsPatch(p,data,merge=false){try{let url=`${_FS}/${p}?${_FK}`;if(merge)url+='&'+Object.keys(data).map(f=>'updateMask.fieldPaths='+encodeURIComponent(f)).join('&');await fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(_fb(data))});}catch(e){}}
+async function _fsDelete(p){try{await fetch(`${_FS}/${p}?${_FK}`,{method:'DELETE'});}catch(e){}}
+
 const showToast=msg=>{const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800);};
 
 // Caché en memoria
@@ -516,39 +523,36 @@ function loadHiddenCats(){return _hiddenCatsCache;}
 function getUsers(){return _usersCache||DEFAULT_USERS;}
 function getSucDisabled(suc){return Array.from(_availCache['suc'+suc]||[]);}
 
-// Escritura a Firestore + actualización del caché
-async function saveMenu(d){_menuCache=d;return db.collection('cafe').doc('menu').set({items:d});}
-async function saveCats(d){_catsCache=d;return db.collection('cafe').doc('cats').set({list:d},{merge:true});}
-async function saveHiddenCats(d){_hiddenCatsCache=d;return db.collection('cafe').doc('cats').set({hidden:d},{merge:true});}
-async function saveUsers(u){_usersCache=u;return db.collection('cafe').doc('users').set({list:u});}
-async function setSucDisabled(suc,ids){_availCache['suc'+suc]=ids;return db.collection('cafe').doc('availability').set({['suc'+suc]:ids},{merge:true});}
+// Escritura a Firestore vía REST + actualización del caché
+async function saveMenu(d){_menuCache=d;return _fsPatch('cafe/menu',{items:d});}
+async function saveCats(d){_catsCache=d;return _fsPatch('cafe/cats',{list:d},true);}
+async function saveHiddenCats(d){_hiddenCatsCache=d;return _fsPatch('cafe/cats',{hidden:d},true);}
+async function saveUsers(u){_usersCache=u;return _fsPatch('cafe/users',{list:u});}
+async function setSucDisabled(suc,ids){_availCache['suc'+suc]=ids;return _fsPatch('cafe/availability',{['suc'+suc]:ids},true);}
 function toggleDisabled(suc,itemId){const ids=getSucDisabled(suc);const i=ids.indexOf(itemId);if(i>=0)ids.splice(i,1);else ids.push(itemId);_availCache['suc'+suc]=ids;setSucDisabled(suc,ids);}
 
-// Fotos en Firestore
-async function getAllPhotos(){if(_photosCache!==null)return _photosCache;const snap=await db.collection('photos').get();_photosCache={};snap.forEach(doc=>{_photosCache[doc.id]=doc.data().d;});return _photosCache;}
-async function setPhoto(id,data){if(_photosCache)_photosCache[String(id)]=data;return db.collection('photos').doc(String(id)).set({d:data});}
-async function deletePhoto(id){if(_photosCache)delete _photosCache[String(id)];return db.collection('photos').doc(String(id)).delete();}
+// Fotos
+async function getAllPhotos(){if(_photosCache!==null)return _photosCache;const docs=await _fsList('photos');_photosCache={};docs.forEach(d=>{_photosCache[d._id]=d.d;});return _photosCache;}
+async function setPhoto(id,data){if(_photosCache)_photosCache[String(id)]=data;return _fsPatch('photos/'+id,{d:data});}
+async function deletePhoto(id){if(_photosCache)delete _photosCache[String(id)];return _fsDelete('photos/'+id);}
 
-// Carga inicial desde Firestore
+// Carga inicial de datos
 async function loadAllData(){
   const[mD,cD,uD,aD]=await Promise.all([
-    db.collection('cafe').doc('menu').get(),
-    db.collection('cafe').doc('cats').get(),
-    db.collection('cafe').doc('users').get(),
-    db.collection('cafe').doc('availability').get(),
+    _fsGet('cafe/menu'),_fsGet('cafe/cats'),_fsGet('cafe/users'),_fsGet('cafe/availability'),
   ]);
-  _menuCache=mD.exists?mD.data().items:DEFAULT_MENU;
-  if(!mD.exists)db.collection('cafe').doc('menu').set({items:DEFAULT_MENU});
-  _catsCache=cD.exists?cD.data().list:DEFAULT_CATS_ARR;
-  _hiddenCatsCache=cD.exists?(cD.data().hidden||[]):[];
-  if(!cD.exists)db.collection('cafe').doc('cats').set({list:DEFAULT_CATS_ARR,hidden:[]});
-  _usersCache=uD.exists?uD.data().list:DEFAULT_USERS;
-  if(!uD.exists)db.collection('cafe').doc('users').set({list:DEFAULT_USERS});
-  _availCache=aD.exists?aD.data():{};
+  _menuCache=mD?.items||DEFAULT_MENU;
+  if(!mD)_fsPatch('cafe/menu',{items:DEFAULT_MENU});
+  _catsCache=cD?.list||DEFAULT_CATS_ARR;
+  _hiddenCatsCache=cD?.hidden||[];
+  if(!cD)_fsPatch('cafe/cats',{list:DEFAULT_CATS_ARR,hidden:[]});
+  _usersCache=uD?.list||DEFAULT_USERS;
+  if(!uD)_fsPatch('cafe/users',{list:DEFAULT_USERS});
+  _availCache=aD||{};
 }
 
-// Pre-carga de usuarios para validar login sin esperar loadAllData
-(async()=>{try{const doc=await db.collection('cafe').doc('users').get();if(doc.exists)_usersCache=doc.data().list;}catch(e){}finally{_authReady=true;}})();
+// Pre-carga de usuarios para login
+(async()=>{try{const doc=await _fsGet('cafe/users');if(doc?.list)_usersCache=doc.list;}catch(e){}finally{_authReady=true;}})();
 
 async function hashStr(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
 function getSession(){return JSON.parse(sessionStorage.getItem('cafeSession')||'null');}
