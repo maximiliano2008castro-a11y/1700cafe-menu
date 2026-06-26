@@ -815,7 +815,12 @@ async function saveUser(){
     if(users.find(u=>u.username===username)){showToast('Ese usuario ya existe');return;}
     users.push({id:Date.now(),username,hash:await hashStr(pwd),role,sucursal:suc,name});
   }
-  saveUsers(users);renderUsers();closeUserModal();showToast('Usuario guardado');
+  try{
+    await saveUsers(users);
+    renderUsers();closeUserModal();showToast('Usuario guardado ✓');
+  }catch(e){
+    showToast('Error al guardar: '+e.message);
+  }
 }
 function editUser(id){openUserModal(id);}
 function deleteUser(id){
