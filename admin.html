@@ -679,10 +679,7 @@ async function doLogin(){
     document.getElementById('app').style.display='block';
     init();
   } else {
-    const errEl=document.getElementById('loginError');
-    if(!byName) errEl.textContent=`Usuario "${username}" no encontrado (${allUsers.length} usuarios cargados)`;
-    else errEl.textContent='Contraseña incorrecta';
-    errEl.style.display='block';
+    document.getElementById('loginError').style.display='block';
   }
 }
 document.getElementById('pwdInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
