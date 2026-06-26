@@ -653,13 +653,20 @@ async function doLogin(){
   if(!_authReady){
     await new Promise(r=>{const iv=setInterval(()=>{if(_authReady){clearInterval(iv);r();}},100);});
   }
-  const user=getUsers().find(u=>u.username===username&&u.hash===h);
+  const allUsers=getUsers();
+  const byName=allUsers.find(u=>u.username===username);
+  const user=byName&&byName.hash===h?byName:null;
   if(user){
     sessionStorage.setItem('cafeSession',JSON.stringify(user));
     document.getElementById('loginOverlay').style.display='none';
     document.getElementById('app').style.display='block';
     init();
-  } else { document.getElementById('loginError').style.display='block'; }
+  } else {
+    const errEl=document.getElementById('loginError');
+    if(!byName) errEl.textContent=`Usuario "${username}" no encontrado (${allUsers.length} usuarios cargados)`;
+    else errEl.textContent='Contraseña incorrecta';
+    errEl.style.display='block';
+  }
 }
 document.getElementById('pwdInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 document.getElementById('userInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('pwdInput').focus();});
