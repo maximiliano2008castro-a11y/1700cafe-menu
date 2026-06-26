@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Menú — 1700 Café de Altura</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     :root{
       --rojo:#c44040; --rojo-dark:#5a0e0e;
@@ -728,8 +730,7 @@ const DEFAULT_MENU=[
 ];
 
 const DEFAULT_CAT_ORDER=["Bebidas Calientes","Frappes","Infusiones","Bebidas Frías","Sodas Italianas","Desayunos","Crepas Especiales","Crepas Dulces","Crepas de Sal","Extras","Expendio"];
-function loadCats(){const s=localStorage.getItem('cafeCats');return s?JSON.parse(s):DEFAULT_CAT_ORDER;}
-const CAT_ORDER=loadCats();
+let CAT_ORDER=DEFAULT_CAT_ORDER;
 const TWO_COL=new Set(["Crepas Dulces","Crepas de Sal"]);
 const CAT_EYEBROW={
   "Bebidas Calientes":"Preparaciones de espresso",
@@ -745,7 +746,6 @@ const CAT_EYEBROW={
   "Expendio":"Para llevar a casa",
 };
 
-function loadMenu(){const s=localStorage.getItem('cafeMenu');return s?JSON.parse(s):DEFAULT_MENU;}
 function groupBy(arr,k){return arr.reduce((a,i)=>{(a[i[k]]=a[i[k]]||[]).push(i);return a;},{});}
 
 const BANNER_CATS   = new Set(["Bebidas Calientes","Infusiones"]);
@@ -870,12 +870,13 @@ function renderCatBanner(cat){
   </div>`;
 }
 
-const _DB_NAME='cafePhotoDB',_DB_STORE='photos';
-function _openDb(){return new Promise((res,rej)=>{const r=indexedDB.open(_DB_NAME,1);r.onupgradeneeded=e=>e.target.result.createObjectStore(_DB_STORE);r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e.target.error);});}
-async function getAllPhotos(){const db=await _openDb();return new Promise((res,rej)=>{const out={};const tx=db.transaction(_DB_STORE,'readonly');tx.objectStore(_DB_STORE).openCursor().onsuccess=e=>{const c=e.target.result;if(c){out[c.key]=c.value;c.continue();}else res(out);};tx.onerror=e=>rej(e.target.error);});}
-async function setPhoto(id,data){const db=await _openDb();return new Promise((res,rej)=>{const tx=db.transaction(_DB_STORE,'readwrite');tx.objectStore(_DB_STORE).put(data,String(id));tx.oncomplete=()=>res(true);tx.onerror=e=>rej(e.target.error);});}
-async function deletePhoto(id){const db=await _openDb();return new Promise((res,rej)=>{const tx=db.transaction(_DB_STORE,'readwrite');tx.objectStore(_DB_STORE).delete(String(id));tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}
-async function migratePhotos(){const s=localStorage.getItem('cafePhotos');if(!s)return;try{const old=JSON.parse(s);for(const[k,v]of Object.entries(old))await setPhoto(k,v);localStorage.removeItem('cafePhotos');}catch(e){}}
+// ── Firebase + caché ──
+firebase.initializeApp({apiKey:"AIzaSyAbUnTt_q5fuY-OMFjoNW5SBgVP0DoAMGo",authDomain:"cafe-a5b33.firebaseapp.com",projectId:"cafe-a5b33",storageBucket:"cafe-a5b33.firebasestorage.app",messagingSenderId:"232025989864",appId:"1:232025989864:web:4f1610ad33c64bc51adf5d"});
+const _db=firebase.firestore();
+let _menuFb=null,_availFb={},_photosFb=null;
+function loadMenu(){return _menuFb||DEFAULT_MENU;}
+function getSucDisabledMenu(suc){return Array.from(_availFb['suc'+suc]||[]);}
+async function getAllPhotos(){if(_photosFb!==null)return _photosFb;const snap=await _db.collection('photos').get();_photosFb={};snap.forEach(doc=>{_photosFb[doc.id]=doc.data().d;});return _photosFb;}
 
 /* ── Bebidas Calientes / Infusiones: animación + tabla tamaños ── */
 function renderSizes(cat,items,photos){
@@ -1097,7 +1098,6 @@ function getSucursal(){
   return ss?parseInt(ss):null;
 }
 function setSucursal(s){sessionStorage.setItem('cafeSuc',s);const u=new URL(location);u.searchParams.set('s',s);history.replaceState({},'',u);renderMenu();}
-function getSucDisabledMenu(suc){return JSON.parse(localStorage.getItem('cafeSucDisabled_'+suc)||'[]');}
 
 function showBranchSelector(){
   if(document.getElementById('branchOverlay'))return;
@@ -1171,11 +1171,21 @@ async function renderMenu(){
   document.querySelectorAll('.menu-section').forEach(s=>obs.observe(s));
 }
 
-migratePhotos().then(()=>renderMenu());
+// Listener en tiempo real — cualquier cambio en Firestore re-renderiza el menú
+let _renderTimer=null;
+function scheduleRender(){clearTimeout(_renderTimer);_renderTimer=setTimeout(()=>{_photosFb=null;renderMenu();},120);}
 
-window.addEventListener('storage',e=>{
-  const suc=getSucursal();
-  if(e.key==='cafeMenu'||e.key==='cafeCats'||e.key===('cafeSucDisabled_'+(suc||'')))renderMenu();
+_db.collection('cafe').doc('menu').onSnapshot(doc=>{
+  if(doc.exists)_menuFb=doc.data().items;
+  scheduleRender();
+});
+_db.collection('cafe').doc('cats').onSnapshot(doc=>{
+  if(doc.exists)CAT_ORDER=doc.data().list;
+  scheduleRender();
+});
+_db.collection('cafe').doc('availability').onSnapshot(doc=>{
+  if(doc.exists)_availFb=doc.data();
+  scheduleRender();
 });
 </script>
 </body>

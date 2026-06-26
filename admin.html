@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Admin — 1700 Café de Altura</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lora:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     :root{
       --rojo:#8B1515;--rojo-dark:#5a0e0e;--rojo-mid:#A01C1C;
@@ -315,10 +317,10 @@
     <nav class="sidebar-nav" id="sidebarNav">
       <button class="nav-item active" onclick="showPage('dashboard',this)"><span class="ni">📊</span> Dashboard</button>
       <button class="nav-item" onclick="showPage('vista',this)"><span class="ni">👁</span> Vista del Menú</button>
-      <button class="nav-item admin-only admin-general" onclick="showPage('items',this)"><span class="ni">🍽️</span> Platillos</button>
-      <button class="nav-item admin-only admin-general" onclick="showPage('categories',this)"><span class="ni">🗂️</span> Categorías</button>
+      <button class="nav-item admin-only" onclick="showPage('items',this)"><span class="ni">🍽️</span> Platillos</button>
+      <button class="nav-item admin-only" onclick="showPage('categories',this)"><span class="ni">🗂️</span> Categorías</button>
       <button class="nav-item disp-nav" style="display:none" onclick="showPage('disponibilidad',this)"><span class="ni">✅</span> Disponibilidad</button>
-      <button class="nav-item admin-only admin-general" onclick="showPage('usuarios',this)"><span class="ni">👥</span> Usuarios</button>
+      <button class="nav-item admin-only" onclick="showPage('usuarios',this)"><span class="ni">👥</span> Usuarios</button>
     </nav>
     <div class="sidebar-footer">
       <button class="btn-logout" onclick="doLogout()">⬅ Cerrar sesión</button>
@@ -499,9 +501,56 @@ const DEFAULT_USERS=[
 ];
 const SUC_NAMES={1:'Ciudad del Sol',2:'Basílica',3:'López Mateos Sur'};
 
+// ── Firebase ──
+firebase.initializeApp({apiKey:"AIzaSyAbUnTt_q5fuY-OMFjoNW5SBgVP0DoAMGo",authDomain:"cafe-a5b33.firebaseapp.com",projectId:"cafe-a5b33",storageBucket:"cafe-a5b33.firebasestorage.app",messagingSenderId:"232025989864",appId:"1:232025989864:web:4f1610ad33c64bc51adf5d"});
+const db=firebase.firestore();
+const showToast=msg=>{const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800);};
+
+// Caché en memoria
+let _menuCache=null,_catsCache=null,_hiddenCatsCache=[],_photosCache=null,_usersCache=null,_availCache={},_authReady=false;
+
+// Lecturas sincrónicas del caché
+function loadMenu(){return _menuCache||DEFAULT_MENU;}
+function loadCats(){return _catsCache||[];}
+function loadHiddenCats(){return _hiddenCatsCache;}
+function getUsers(){return _usersCache||DEFAULT_USERS;}
+function getSucDisabled(suc){return Array.from(_availCache['suc'+suc]||[]);}
+
+// Escritura a Firestore + actualización del caché
+async function saveMenu(d){_menuCache=d;return db.collection('cafe').doc('menu').set({items:d});}
+async function saveCats(d){_catsCache=d;return db.collection('cafe').doc('cats').set({list:d},{merge:true});}
+async function saveHiddenCats(d){_hiddenCatsCache=d;return db.collection('cafe').doc('cats').set({hidden:d},{merge:true});}
+async function saveUsers(u){_usersCache=u;return db.collection('cafe').doc('users').set({list:u});}
+async function setSucDisabled(suc,ids){_availCache['suc'+suc]=ids;return db.collection('cafe').doc('availability').set({['suc'+suc]:ids},{merge:true});}
+function toggleDisabled(suc,itemId){const ids=getSucDisabled(suc);const i=ids.indexOf(itemId);if(i>=0)ids.splice(i,1);else ids.push(itemId);_availCache['suc'+suc]=ids;setSucDisabled(suc,ids);}
+
+// Fotos en Firestore
+async function getAllPhotos(){if(_photosCache!==null)return _photosCache;const snap=await db.collection('photos').get();_photosCache={};snap.forEach(doc=>{_photosCache[doc.id]=doc.data().d;});return _photosCache;}
+async function setPhoto(id,data){if(_photosCache)_photosCache[String(id)]=data;return db.collection('photos').doc(String(id)).set({d:data});}
+async function deletePhoto(id){if(_photosCache)delete _photosCache[String(id)];return db.collection('photos').doc(String(id)).delete();}
+
+// Carga inicial desde Firestore
+async function loadAllData(){
+  const[mD,cD,uD,aD]=await Promise.all([
+    db.collection('cafe').doc('menu').get(),
+    db.collection('cafe').doc('cats').get(),
+    db.collection('cafe').doc('users').get(),
+    db.collection('cafe').doc('availability').get(),
+  ]);
+  _menuCache=mD.exists?mD.data().items:DEFAULT_MENU;
+  if(!mD.exists)db.collection('cafe').doc('menu').set({items:DEFAULT_MENU});
+  _catsCache=cD.exists?cD.data().list:DEFAULT_CATS_ARR;
+  _hiddenCatsCache=cD.exists?(cD.data().hidden||[]):[];
+  if(!cD.exists)db.collection('cafe').doc('cats').set({list:DEFAULT_CATS_ARR,hidden:[]});
+  _usersCache=uD.exists?uD.data().list:DEFAULT_USERS;
+  if(!uD.exists)db.collection('cafe').doc('users').set({list:DEFAULT_USERS});
+  _availCache=aD.exists?aD.data():{};
+}
+
+// Pre-carga de usuarios para validar login sin esperar loadAllData
+(async()=>{try{const doc=await db.collection('cafe').doc('users').get();if(doc.exists)_usersCache=doc.data().list;}catch(e){}finally{_authReady=true;}})();
+
 async function hashStr(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
-function getUsers(){return JSON.parse(localStorage.getItem('cafeUsers')||'null')||DEFAULT_USERS;}
-function saveUsers(u){localStorage.setItem('cafeUsers',JSON.stringify(u));}
 function getSession(){return JSON.parse(sessionStorage.getItem('cafeSession')||'null');}
 function isAdmin(){return getSession()?.role==='admin';}
 function getSessionSuc(){return getSession()?.sucursal;}
@@ -509,6 +558,9 @@ function getSessionSuc(){return getSession()?.sucursal;}
 async function doLogin(){
   const username=document.getElementById('userInput').value.trim();
   const h=await hashStr(document.getElementById('pwdInput').value);
+  if(!_authReady){
+    await new Promise(r=>{const iv=setInterval(()=>{if(_authReady){clearInterval(iv);r();}},100);});
+  }
   const user=getUsers().find(u=>u.username===username&&u.hash===h);
   if(user){
     sessionStorage.setItem('cafeSession',JSON.stringify(user));
@@ -523,15 +575,6 @@ function doLogout(){sessionStorage.removeItem('cafeSession');location.reload();}
 function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('open');}
 function closeSidebar(){document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');}
 
-// ── Disponibilidad por sucursal ──
-function getSucDisabled(suc){return JSON.parse(localStorage.getItem('cafeSucDisabled_'+suc)||'[]');}
-function setSucDisabled(suc,ids){localStorage.setItem('cafeSucDisabled_'+suc,JSON.stringify(ids));}
-function toggleDisabled(suc,itemId){
-  let ids=getSucDisabled(suc);
-  const i=ids.indexOf(itemId);
-  if(i>=0)ids.splice(i,1);else ids.push(itemId);
-  setSucDisabled(suc,ids);
-}
 
 // ── Render Disponibilidad ──
 function renderDisp(){
@@ -570,15 +613,7 @@ function updateMenuLinks(){
 
 function onAdminSucChange(){
   const val=document.getElementById('adminSucSelect').value;
-  const isGeneral=!val;
-  document.querySelectorAll('.admin-general').forEach(el=>el.style.display=isGeneral?'':'none');
-  document.querySelectorAll('.disp-nav').forEach(el=>el.style.display=isGeneral?'none':'');
-  if(!isGeneral){
-    const btn=document.querySelector('.disp-nav');
-    showPage('disponibilidad',btn);
-  } else {
-    showPage('dashboard',document.querySelector('.nav-item'));
-  }
+  document.querySelectorAll('.disp-nav').forEach(el=>el.style.display=val?'':'none');
   updateMenuLinks();
 }
 // Devuelve sucursal activa (admin con selector, o gerente)
@@ -768,19 +803,7 @@ const LIST_CATS=new Set(["Bebidas Frías","Sodas Italianas","Crepas Dulces","Cre
 const CARD_CATS=new Set(["Desayunos","Crepas Especiales"]);
 const NO_PHOTO_CATS=new Set(["Bebidas Calientes","Infusiones","Bebidas Frías","Crepas Dulces","Crepas de Sal","Extras"]);
 
-function loadMenu(){const s=localStorage.getItem('cafeMenu');return s?JSON.parse(s):DEFAULT_MENU;}
-function saveMenu(d){localStorage.setItem('cafeMenu',JSON.stringify(d));}
 const DEFAULT_CATS_ARR=[...DEFAULT_CATS];
-function loadCats(){const s=localStorage.getItem('cafeCats');if(s)return JSON.parse(s);saveCats(DEFAULT_CATS_ARR);return DEFAULT_CATS_ARR;}
-function saveCats(d){localStorage.setItem('cafeCats',JSON.stringify(d));}
-function loadHiddenCats(){const s=localStorage.getItem('cafeCatsHidden');return s?JSON.parse(s):[];}
-function saveHiddenCats(d){localStorage.setItem('cafeCatsHidden',JSON.stringify(d));}
-const _DB_NAME='cafePhotoDB',_DB_STORE='photos';
-function _openDb(){return new Promise((res,rej)=>{const r=indexedDB.open(_DB_NAME,1);r.onupgradeneeded=e=>e.target.result.createObjectStore(_DB_STORE);r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e.target.error);});}
-async function getAllPhotos(){const db=await _openDb();return new Promise((res,rej)=>{const out={};const tx=db.transaction(_DB_STORE,'readonly');tx.objectStore(_DB_STORE).openCursor().onsuccess=e=>{const c=e.target.result;if(c){out[c.key]=c.value;c.continue();}else res(out);};tx.onerror=e=>rej(e.target.error);});}
-async function setPhoto(id,data){const db=await _openDb();return new Promise((res,rej)=>{const tx=db.transaction(_DB_STORE,'readwrite');tx.objectStore(_DB_STORE).put(data,String(id));tx.oncomplete=()=>res(true);tx.onerror=e=>rej(e.target.error);});}
-async function deletePhoto(id){const db=await _openDb();return new Promise((res,rej)=>{const tx=db.transaction(_DB_STORE,'readwrite');tx.objectStore(_DB_STORE).delete(String(id));tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}
-async function migratePhotos(){const s=localStorage.getItem('cafePhotos');if(!s)return;try{const old=JSON.parse(s);for(const[k,v]of Object.entries(old))await setPhoto(k,v);localStorage.removeItem('cafePhotos');}catch(e){}}
 function nextId(items){return items.length?Math.max(...items.map(i=>i.id))+1:1;}
 function groupBy(arr,k){return arr.reduce((a,i)=>{(a[i[k]]=a[i[k]]||[]).push(i);return a;},{});}
 
@@ -1391,17 +1414,12 @@ function renderVistaSize(cat,items,photos){
   html+=`</div>`;return html;
 }
 
-// ── Storage bar ──
+// ── Storage bar (fotos en Firestore, sin límite local) ──
 function updateStorageBar(){
-  try{
-    let total=0;
-    for(let k in localStorage) total+=localStorage[k].length+k.length;
-    const kb=Math.round(total/1024);
-    const pct=Math.min(100,Math.round(kb/5120*100));
-    document.getElementById('storageBar').style.width=pct+'%';
-    document.getElementById('storageLabel').textContent=`Almacenamiento: ${kb} KB / ~5 MB`;
-    document.getElementById('storageBar').style.background=pct>80?'var(--danger)':pct>60?'var(--oro)':'var(--success)';
-  } catch(e){}
+  const photos=_photosCache||{};
+  const n=Object.keys(photos).length;
+  document.getElementById('storageLabel').textContent=`Fotos guardadas: ${n} — almacenamiento en la nube`;
+  document.getElementById('storageBar').style.width='0%';
 }
 
 // ── Close modals on backdrop click ──
@@ -1428,21 +1446,17 @@ document.getElementById('catModal').addEventListener('click',e=>{if(e.target===e
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeCatModal();}});
 
 async function init(){
-  await migratePhotos();
+  await loadAllData();
   const session=getSession();
-  // Sidebar: nombre y rol
   document.getElementById('sidebarRole').textContent=session.role==='admin'?'Administrador':'Gerente — '+SUC_NAMES[session.sucursal];
   document.getElementById('sidebarUser').textContent=session.username;
-  // Mostrar/ocultar nav items según rol
   if(session.role==='admin'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='');
     document.getElementById('sucSelector').style.display='';
-    // Disp nav oculto hasta que admin elija sucursal
     document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='none');
     renderDashboard();renderTable();updateStorageBar();
     updateMenuLinks();
   } else {
-    // Gerente: ocultar todo admin-only, mostrar solo disp-nav
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
     document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='');
     const dispBtn=document.querySelector('.disp-nav');
@@ -1451,7 +1465,7 @@ async function init(){
   }
 }
 
-if(sessionStorage.getItem('adminAuth')==='1'){
+if(getSession()){
   document.getElementById('loginOverlay').style.display='none';
   document.getElementById('app').style.display='block';
   init();
