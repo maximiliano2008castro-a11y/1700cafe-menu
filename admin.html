@@ -315,7 +315,7 @@
       </select>
     </div>
     <nav class="sidebar-nav" id="sidebarNav">
-      <button class="nav-item active" onclick="showPage('dashboard',this)"><span class="ni">📊</span> Dashboard</button>
+      <button class="nav-item active" onclick="showPage('inicio',this)"><span class="ni">📊</span> Inicio</button>
       <button class="nav-item" onclick="showPage('vista',this)"><span class="ni">👁</span> Vista del Menú</button>
       <button class="nav-item admin-only" onclick="showPage('items',this)"><span class="ni">🍽️</span> Platillos</button>
       <button class="nav-item admin-only" onclick="showPage('categories',this)"><span class="ni">🗂️</span> Categorías</button>
@@ -330,8 +330,8 @@
   <div class="main-content">
 
     <!-- DASHBOARD -->
-    <div id="page-dashboard" class="page active">
-      <div class="page-header"><div><h2>Dashboard</h2><p>Resumen general</p></div></div>
+    <div id="page-inicio" class="page active">
+      <div class="page-header"><div><h2>Inicio</h2><p>Resumen general</p></div></div>
       <div class="stats-grid" id="statsGrid"></div>
       <h3 style="font-family:'Playfair Display',serif;color:var(--rojo);margin-bottom:13px;font-size:1.1rem">Últimos platillos</h3>
       <div class="table-wrap">
@@ -817,7 +817,7 @@ function showPage(name,btn){
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
-  if(name==='dashboard')renderDashboard();
+  if(name==='inicio')renderInicio();
   if(name==='items')renderTable();
   if(name==='categories')renderCats();
   if(name==='vista')renderVista();
@@ -826,8 +826,8 @@ function showPage(name,btn){
   closeSidebar();
 }
 
-// ── Dashboard ──
-async function renderDashboard(){
+// ── Inicio ──
+async function renderInicio(){
   const items=loadMenu();
   const avail=items.filter(i=>i.available).length;
   const cats=[...new Set(items.map(i=>i.category))];
@@ -888,7 +888,7 @@ async function deleteItem(id){
   if(!confirm('¿Eliminar este platillo?'))return;
   saveMenu(loadMenu().filter(i=>i.id!==id));
   await deletePhoto(id);
-  toast('🗑️ Platillo eliminado');renderTable();renderDashboard();syncVista();
+  toast('🗑️ Platillo eliminado');renderTable();renderInicio();syncVista();
 }
 
 // ── Campos de precio dinámicos según categoría ──
@@ -1026,7 +1026,7 @@ async function saveItem(){
   // save photo
   if(pendingPhotoData==='REMOVE') await deletePhoto(targetId);
   else if(pendingPhotoData) await setPhoto(targetId,pendingPhotoData);
-  closeModal();renderTable();renderDashboard();updateStorageBar();syncVista();
+  closeModal();renderTable();renderInicio();updateStorageBar();syncVista();
 }
 
 // ── Categories ──
@@ -1043,7 +1043,7 @@ function duplicateItem(id){
   const src=items.find(i=>i.id===id);if(!src)return;
   const copy={...src,id:nextId(items),name:src.name+' (copia)'};
   items.push(copy);saveMenu(items);
-  toast('✅ Platillo duplicado');renderTable();renderDashboard();syncVista();
+  toast('✅ Platillo duplicado');renderTable();renderInicio();syncVista();
 }
 function renderCats(){
   const cats=loadCats();const hidden=loadHiddenCats();const items=loadMenu();
@@ -1095,19 +1095,19 @@ function deleteCat(cat){
   if(!confirm(`"${cat}" se archivará. ¿Continuar?`))return;
   saveCats(loadCats().filter(c=>c!==cat));
   const h=loadHiddenCats();if(!h.includes(cat))h.push(cat);saveHiddenCats(h);
-  toast('📦 Sección archivada');renderCats();renderDashboard();syncVista();
+  toast('📦 Sección archivada');renderCats();renderInicio();syncVista();
 }
 function hardDeleteCat(cat){
   const n=loadMenu().filter(i=>i.category===cat).length;
   if(!confirm(n?`¿Eliminar "${cat}" definitivamente? Los ${n} platillo(s) también se borrarán.`:`¿Eliminar "${cat}" definitivamente?`))return;
   saveHiddenCats(loadHiddenCats().filter(c=>c!==cat));
   saveMenu(loadMenu().filter(i=>i.category!==cat));
-  toast('🗑️ Categoría eliminada');renderCats();renderDashboard();syncVista();
+  toast('🗑️ Categoría eliminada');renderCats();renderInicio();syncVista();
 }
 function restoreCat(cat){
   const h=loadHiddenCats().filter(c=>c!==cat);saveHiddenCats(h);
   const cats=loadCats();if(!cats.includes(cat))cats.push(cat);saveCats(cats);
-  toast('✅ Sección restaurada');renderCats();renderDashboard();syncVista();
+  toast('✅ Sección restaurada');renderCats();renderInicio();syncVista();
 }
 
 // ── VISTA DEL MENÚ ──
@@ -1187,12 +1187,12 @@ function quickToggle(id){
   if(dot){dot.classList.toggle('on',items[i].available);dot.classList.toggle('off',!items[i].available);dot.title=items[i].available?'Ocultar':'Mostrar';}
   const row=document.getElementById('prow-'+id);
   if(row)row.style.opacity=items[i].available?'1':'.35';
-  toast(items[i].available?'✓ Visible':'Oculto');renderDashboard();
+  toast(items[i].available?'✓ Visible':'Oculto');renderInicio();
 }
 function quickSave(id,field,val){
   const items=loadMenu();const i=items.findIndex(x=>x.id===id);if(i===-1)return false;
   if(items[i][field]===val)return false;
-  items[i][field]=val;saveMenu(items);renderDashboard();return true;
+  items[i][field]=val;saveMenu(items);renderInicio();return true;
 }
 function quickSaveName(id,el){
   const v=el.textContent.trim();
@@ -1219,7 +1219,7 @@ async function quickDelete(id){
   saveMenu(loadMenu().filter(i=>i.id!==id));
   await deletePhoto(id);
   document.getElementById('prow-'+id)?.remove();
-  toast('Eliminado');renderDashboard();updateStorageBar();
+  toast('Eliminado');renderInicio();updateStorageBar();
 }
 let _quickPhotoId=null;
 function compressImage(dataUrl,maxW,maxH,quality=0.72){
@@ -1447,22 +1447,27 @@ document.getElementById('catModal').addEventListener('click',e=>{if(e.target===e
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeCatModal();}});
 
 async function init(){
-  await loadAllData();
   const session=getSession();
   document.getElementById('sidebarRole').textContent=session.role==='admin'?'Administrador':'Gerente — '+SUC_NAMES[session.sucursal];
   document.getElementById('sidebarUser').textContent=session.username;
+  // Mostrar estructura de sidebar inmediatamente, sin esperar datos
   if(session.role==='admin'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='');
     document.getElementById('sucSelector').style.display='';
     document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='none');
-    renderDashboard();renderTable();updateStorageBar();
     updateMenuLinks();
   } else {
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
     document.querySelectorAll('.disp-nav').forEach(el=>el.style.display='');
+    updateMenuLinks();
+  }
+  // Cargar datos y renderizar
+  await loadAllData();
+  if(session.role==='admin'){
+    renderInicio();renderTable();updateStorageBar();
+  } else {
     const dispBtn=document.querySelector('.disp-nav');
     showPage('disponibilidad',dispBtn);
-    updateMenuLinks();
   }
 }
 
