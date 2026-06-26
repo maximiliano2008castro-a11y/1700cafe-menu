@@ -331,10 +331,10 @@
     <div id="page-inicio" class="page active">
       <div class="page-header"><div><h2>Inicio</h2><p>Resumen general</p></div></div>
       <div class="stats-grid" id="statsGrid"></div>
-      <h3 style="font-family:'Playfair Display',serif;color:var(--rojo);margin-bottom:13px;font-size:1.1rem">Últimos platillos</h3>
+      <h3 style="font-family:'Playfair Display',serif;color:var(--rojo);margin-bottom:13px;font-size:1.1rem">Actividad reciente</h3>
       <div class="table-wrap">
-        <table><thead><tr><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Estado</th></tr></thead>
-        <tbody id="recentBody"></tbody></table>
+        <table><thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Sucursal</th><th>Acción</th><th>Detalle</th></tr></thead>
+        <tbody id="logBody"></tbody></table>
       </div>
     </div>
 
@@ -532,7 +532,7 @@ const showToast=msg=>{const el=document.getElementById('toast');el.textContent=m
 // Caché en memoria — estructura por sucursal
 let _globalMenu=null,_globalCats=null,_globalHiddenCats=[];
 let _branchData={1:null,2:null,3:null}; // {items,cats,hiddenCats,disabled}
-let _photosCache=null,_usersCache=null,_authReady=false;
+let _photosCache=null,_usersCache=null,_authReady=false,_logCache=null;
 
 // Lectura según contexto activo
 function loadMenu(){const s=getActiveSuc();return s?(_branchData[s]?.items||_globalMenu||DEFAULT_MENU):(_globalMenu||DEFAULT_MENU);}
@@ -615,11 +615,27 @@ async function setPhoto(id,data){const k=getPhotoKey(id);if(_photosCache)_photos
 async function deletePhoto(id){const k=getPhotoKey(id);if(_photosCache)delete _photosCache[k];return _fsDelete('photos/'+k);}
 
 // Carga inicial de datos
+async function logAction(action,detail){
+  const session=getSession();if(!session)return;
+  const suc=getActiveSuc();
+  const entry={ts:Date.now(),user:session.username,role:session.role,suc,sucName:suc?SUC_NAMES[suc]:'Todas',action,detail};
+  if(!_logCache)_logCache=[];
+  _logCache.unshift(entry);
+  if(_logCache.length>300)_logCache=_logCache.slice(0,300);
+  try{await _fsPatch('cafe/log',{entries:_logCache});}catch(e){}
+}
+function _fmtTs(ts){
+  const d=new Date(ts);
+  const date=d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'2-digit'});
+  const time=d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  return date+' '+time;
+}
+
 async function loadAllData(){
-  const[gD,s1,s2,s3,uD]=await Promise.all([
+  const[gD,s1,s2,s3,uD,logD]=await Promise.all([
     _fsGet('cafe/menu'),
     _fsGet('sucursales/1'),_fsGet('sucursales/2'),_fsGet('sucursales/3'),
-    _fsGet('cafe/users'),
+    _fsGet('cafe/users'),_fsGet('cafe/log'),
   ]);
   // cafe/menu puede estar vacío si las sucursales ya tienen datos propios — usar suc1 como referencia global
   _globalMenu=gD?.items||s1?.items||DEFAULT_MENU;
@@ -637,6 +653,7 @@ async function loadAllData(){
   });
   _usersCache=uD?.list||DEFAULT_USERS;
   if(!uD)_fsPatch('cafe/users',{list:DEFAULT_USERS});
+  _logCache=logD?.entries||[];
 }
 
 // Pre-carga de usuarios para login
@@ -749,6 +766,8 @@ async function onDispToggle(itemId,cb){
   row.querySelector('.disp-toggle span').textContent=off?'No disponible':'Disponible';
   try{
     await setSucDisabled(suc,getSucDisabled(suc));
+    const iname=loadMenu().find(i=>i.id===itemId)?.name||itemId;
+    logAction('disponibilidad',iname+': '+(off?'desactivado':'activado'));
     showToast(off?'Desactivado ✓':'Activado ✓');
   }catch(e){
     // revertir UI si falla el guardado
@@ -824,6 +843,7 @@ async function saveUser(){
   }
   try{
     await saveUsers(users);
+    logAction('usuario',(_editUserId?'Editado: ':'Creado: ')+username+' ('+role+')');
     renderUsers();closeUserModal();showToast('Usuario guardado ✓');
   }catch(e){
     showToast('Error al guardar: '+e.message);
@@ -832,7 +852,9 @@ async function saveUser(){
 function editUser(id){openUserModal(id);}
 function deleteUser(id){
   if(!confirm('¿Eliminar este usuario?'))return;
+  const del=getUsers().find(u=>u.id===id);
   const users=getUsers().filter(u=>u.id!==id);
+  if(del)logAction('usuario','Eliminado: '+del.username);
   saveUsers(users);renderUsers();showToast('Usuario eliminado');
 }
 
@@ -975,11 +997,21 @@ async function renderInicio(){
     <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-val">${avail}</div><div class="stat-label">Visibles</div></div>
     <div class="stat-card"><div class="stat-icon">📷</div><div class="stat-val">${withPhoto}</div><div class="stat-label">Con foto</div></div>
     <div class="stat-card"><div class="stat-icon">🗂️</div><div class="stat-val">${cats.length}</div><div class="stat-label">Categorías</div></div>`;
-  const tbody=document.getElementById('recentBody');
-  tbody.innerHTML=[...items].reverse().slice(0,6).map(i=>`
-    <tr><td><strong>${i.name}</strong></td><td style="color:var(--muted)">${i.category}</td>
-    <td><strong>$${i.price||i.priceM||'—'}</strong></td>
-    <td><span class="badge ${i.available?'on':'off'}">${i.available?'✓ Visible':'✗ Oculto'}</span></td></tr>`).join('');
+  const log=(_logCache||[]).slice(0,80);
+  const _actionLabel={platillo:'Platillo',precio:'Precio',disponibilidad:'Disponibilidad',usuario:'Usuario',categoria:'Categoría',foto:'Foto'};
+  const _actionColor={platillo:'#6a5acd',precio:'#2196f3',disponibilidad:'#e67e22',usuario:'#e74c3c',categoria:'#27ae60',foto:'#8e44ad'};
+  document.getElementById('logBody').innerHTML=log.length?log.map(e=>{
+    const color=_actionColor[e.action]||'#999';
+    const label=_actionLabel[e.action]||e.action;
+    const sucBadge=e.sucName?`<span style="background:rgba(139,0,0,.08);color:var(--rojo);border-radius:4px;padding:1px 7px;font-size:.8rem">${e.sucName}</span>`:'—';
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--muted);font-size:.85rem">${_fmtTs(e.ts)}</td>
+      <td><strong>${e.user||'—'}</strong><br><span style="color:var(--muted);font-size:.78rem">${e.role||''}</span></td>
+      <td>${sucBadge}</td>
+      <td><span style="background:${color}18;color:${color};border-radius:4px;padding:2px 8px;font-size:.8rem;font-weight:600">${label}</span></td>
+      <td style="color:var(--muted);font-size:.88rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.detail||'').replace(/"/g,'&quot;')}">${e.detail||'—'}</td>
+    </tr>`;
+  }).join(''):`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Sin actividad registrada aún</td></tr>`;
 }
 
 // ── Table ──
@@ -1023,8 +1055,10 @@ function toggleAvail(id){
 }
 async function deleteItem(id){
   if(!confirm('¿Eliminar este platillo?'))return;
+  const name=loadMenu().find(i=>i.id===id)?.name||id;
   saveMenu(loadMenu().filter(i=>i.id!==id));
   await deletePhoto(id);
+  logAction('platillo','Eliminado: '+name);
   toast('🗑️ Platillo eliminado');renderTable();renderInicio();syncVista();
 }
 
@@ -1154,15 +1188,17 @@ async function saveItem(){
     const idx=items.findIndex(i=>i.id===editId);
     if(idx!==-1)items[idx]={...items[idx],...data};
     toast('✅ Platillo actualizado');
+    logAction('platillo','Editado: '+name);
   } else {
     targetId=nextId(items);
     items.push({id:targetId,...data});
     toast('✅ Platillo agregado');
+    logAction('platillo','Agregado: '+name);
   }
   saveMenu(items);
   // save photo
-  if(pendingPhotoData==='REMOVE') await deletePhoto(targetId);
-  else if(pendingPhotoData) await setPhoto(targetId,pendingPhotoData);
+  if(pendingPhotoData==='REMOVE'){await deletePhoto(targetId);logAction('foto','Eliminada: '+name);}
+  else if(pendingPhotoData){await setPhoto(targetId,pendingPhotoData);logAction('foto','Actualizada: '+name);}
   closeModal();renderTable();renderInicio();updateStorageBar();syncVista();
 }
 
@@ -1226,12 +1262,13 @@ function saveCat(){
   const name=document.getElementById('fCatName').value.trim();
   if(!name){toast('⚠️ Escribe un nombre');return;}
   const cats=loadCats();if(cats.includes(name)){toast('⚠️ Ya existe');return;}
-  cats.push(name);saveCats(cats);toast('✅ Categoría agregada');closeCatModal();renderCats();syncVista();
+  cats.push(name);saveCats(cats);logAction('categoria','Agregada: '+name);toast('✅ Categoría agregada');closeCatModal();renderCats();syncVista();
 }
 function deleteCat(cat){
   if(!confirm(`"${cat}" se archivará. ¿Continuar?`))return;
   saveCats(loadCats().filter(c=>c!==cat));
   const h=loadHiddenCats();if(!h.includes(cat))h.push(cat);saveHiddenCats(h);
+  logAction('categoria','Archivada: '+cat);
   toast('📦 Sección archivada');renderCats();renderInicio();syncVista();
 }
 function hardDeleteCat(cat){
@@ -1239,11 +1276,13 @@ function hardDeleteCat(cat){
   if(!confirm(n?`¿Eliminar "${cat}" definitivamente? Los ${n} platillo(s) también se borrarán.`:`¿Eliminar "${cat}" definitivamente?`))return;
   saveHiddenCats(loadHiddenCats().filter(c=>c!==cat));
   saveMenu(loadMenu().filter(i=>i.category!==cat));
+  logAction('categoria','Eliminada: '+cat);
   toast('🗑️ Categoría eliminada');renderCats();renderInicio();syncVista();
 }
 function restoreCat(cat){
   const h=loadHiddenCats().filter(c=>c!==cat);saveHiddenCats(h);
   const cats=loadCats();if(!cats.includes(cat))cats.push(cat);saveCats(cats);
+  logAction('categoria','Restaurada: '+cat);
   toast('✅ Sección restaurada');renderCats();renderInicio();syncVista();
 }
 
@@ -1334,7 +1373,7 @@ function quickSave(id,field,val){
 function quickSaveName(id,el){
   const v=el.textContent.trim();
   if(!v){el.textContent=loadMenu().find(x=>x.id===id)?.name||'';return;}
-  if(quickSave(id,'name',v))toast('✓ Guardado');
+  if(quickSave(id,'name',v)){toast('✓ Guardado');logAction('platillo','Nombre: '+v);}
 }
 function quickSaveDesc(id,el){
   const v=el.textContent.trim();
@@ -1344,7 +1383,10 @@ function quickSavePrice(id,el,field='price'){
   const v=parseFloat(el.textContent.replace(/[^0-9.]/g,''));
   if(isNaN(v)){el.textContent='$'+(loadMenu().find(x=>x.id===id)?.[field]??'');return;}
   el.textContent='$'+v;
-  if(quickSave(id,field,v))toast('✓ Guardado');
+  if(quickSave(id,field,v)){
+    const name=loadMenu().find(x=>x.id===id)?.name||id;
+    toast('✓ Guardado');logAction('precio',name+': $'+v);
+  }
 }
 function onPriceFocus(el){
   el.textContent=el.textContent.replace(/[^0-9.]/g,'');
