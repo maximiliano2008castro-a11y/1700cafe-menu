@@ -614,6 +614,7 @@ function updateMenuLinks(){
 function onAdminSucChange(){
   const val=document.getElementById('adminSucSelect').value;
   document.querySelectorAll('.disp-nav').forEach(el=>el.style.display=val?'':'none');
+  if(val)showPage('disponibilidad',document.querySelector('.disp-nav'));
   updateMenuLinks();
 }
 // Devuelve sucursal activa (admin con selector, o gerente)
