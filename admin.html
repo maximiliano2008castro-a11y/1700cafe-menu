@@ -582,10 +582,12 @@ function confirmApplyToAll(){
   if(confirm('¿Aplicar el menú general a las 3 sucursales?\nSobreescribirá los cambios individuales de cada sucursal.'))applyGlobalToAll();
 }
 
-// Fotos
+// Fotos — clave branch-aware: "{suc}_{id}" o "{id}" si modo global
+function getPhotoKey(id){const s=getActiveSuc();return s?s+'_'+id:String(id);}
+function getPhotoSrc(id,photos){const s=getActiveSuc();return(s&&photos[s+'_'+id])||photos[String(id)]||null;}
 async function getAllPhotos(){if(_photosCache!==null)return _photosCache;const docs=await _fsList('photos');_photosCache={};docs.forEach(d=>{_photosCache[d._id]=d.d;});return _photosCache;}
-async function setPhoto(id,data){if(_photosCache)_photosCache[String(id)]=data;return _fsPatch('photos/'+id,{d:data});}
-async function deletePhoto(id){if(_photosCache)delete _photosCache[String(id)];return _fsDelete('photos/'+id);}
+async function setPhoto(id,data){const k=getPhotoKey(id);if(_photosCache)_photosCache[k]=data;return _fsPatch('photos/'+k,{d:data});}
+async function deletePhoto(id){const k=getPhotoKey(id);if(_photosCache)delete _photosCache[k];return _fsDelete('photos/'+k);}
 
 // Carga inicial de datos
 async function loadAllData(){
@@ -929,7 +931,7 @@ async function renderInicio(){
   const avail=items.filter(i=>i.available).length;
   const cats=[...new Set(items.map(i=>i.category))];
   const photos=await getAllPhotos();
-  const withPhoto=items.filter(i=>photos[i.id]).length;
+  const withPhoto=items.filter(i=>getPhotoSrc(i.id,photos)).length;
   document.getElementById('statsGrid').innerHTML=`
     <div class="stat-card"><div class="stat-icon">🍽️</div><div class="stat-val">${items.length}</div><div class="stat-label">Platillos</div></div>
     <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-val">${avail}</div><div class="stat-label">Visibles</div></div>
@@ -961,7 +963,7 @@ async function renderTable(){
   if(!filtered.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">Sin resultados</td></tr>';return;}
   tbody.innerHTML=filtered.map(i=>`
     <tr onclick="openModal(${i.id})" style="cursor:pointer">
-      <td onclick="event.stopPropagation()" style="font-size:1.1rem">${NO_PHOTO_CATS.has(i.category)?'<span style="color:var(--muted);font-size:.8rem">—</span>':photos[i.id]?`<img src="${photos[i.id]}" onclick="quickPhoto(${i.id});event.stopPropagation()" style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer" title="Cambiar foto">`:`<span onclick="quickPhoto(${i.id});event.stopPropagation()" style="cursor:pointer" title="Subir foto">📷</span>`}</td>
+      <td onclick="event.stopPropagation()" style="font-size:1.1rem">${NO_PHOTO_CATS.has(i.category)?'<span style="color:var(--muted);font-size:.8rem">—</span>':(()=>{const _ps=getPhotoSrc(i.id,photos);return _ps?`<img src="${_ps}" onclick="quickPhoto(${i.id});event.stopPropagation()" style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer" title="Cambiar foto">`:`<span onclick="quickPhoto(${i.id});event.stopPropagation()" style="cursor:pointer" title="Subir foto">📷</span>`;})()}</td>
       <td><strong>${i.name}</strong>${i.description?`<div style="font-size:.75rem;color:var(--muted)">${i.description.slice(0,48)}${i.description.length>48?'…':''}</div>`:''}</td>
       <td style="color:var(--muted)">${i.category}</td>
       <td><strong>$${i.price||i.priceM||'—'}</strong></td>
@@ -1044,7 +1046,7 @@ async function openModal(id,precat=null){
     if(document.getElementById('fPriceM')) document.getElementById('fPriceM').value=typeof item.priceM==='number'?item.priceM:'';
     if(document.getElementById('fPriceG')) document.getElementById('fPriceG').value=typeof item.priceG==='number'?item.priceG:'';
     if(document.getElementById('fSubcat')) document.getElementById('fSubcat').value=item.subcat||'';
-    if(photos[id]) showPhotoPreview(photos[id]);
+    if(getPhotoSrc(id,photos)) showPhotoPreview(getPhotoSrc(id,photos));
     else clearPhotoPreview();
   } else {
     document.getElementById('fName').value='';
@@ -1366,13 +1368,13 @@ function quickPhoto(id){
 }
 
 function imgOrPhotoBtn(id,photos){
-  const src=photos[id];
+  const src=getPhotoSrc(id,photos);
   return src
     ?`<img src="${src}" style="width:100%;height:100%;object-fit:cover;display:block"/><button onclick="quickRemovePhoto(${id},this);event.stopPropagation()" style="position:absolute;top:6px;right:6px;background:rgba(192,57,43,.9);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>`
     :`<span style="font-size:2.2rem;color:rgba(139,21,21,.2)">📷</span>`;
 }
 function imgOrPlaceholder(id,photos,size=''){
-  const src=photos[id];
+  const src=getPhotoSrc(id,photos);
   if(src) return `<img src="${src}" alt="" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
   return `<span style="font-size:${size||'2rem'};opacity:.2">☕</span>`;
 }

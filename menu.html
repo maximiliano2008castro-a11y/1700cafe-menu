@@ -890,6 +890,8 @@ let _menuFb=null,_availFb=[],_catsFb=null,_hiddenCatsFb=[],_photosFb=null;
 function loadMenu(){return _menuFb||DEFAULT_MENU;}
 function getSucDisabledMenu(){return Array.from(_availFb||[]);}
 async function getAllPhotos(){if(_photosFb!==null)return _photosFb;const docs=await _fsList('photos');_photosFb={};docs.forEach(d=>{_photosFb[d._id]=d.d;});return _photosFb;}
+let _currentSuc=null;
+function getPhotoSrcMenu(id,photos){return(_currentSuc&&photos[_currentSuc+'_'+id])||photos[String(id)]||null;}
 
 /* ── Bebidas Calientes / Infusiones: animación + tabla tamaños ── */
 function renderSizes(cat,items,photos){
@@ -922,7 +924,7 @@ function renderFrappes(items,photos){
   Object.entries(sub).forEach(([sc,list])=>{
     html+=`<div class="subcat-header">— ${sc} —</div>`;
     list.forEach(i=>{
-      const src=photos[i.id];
+      const src=getPhotoSrcMenu(i.id,photos);
       const pic=src?`<img class="item-thumb-circle" src="${src}" alt="${i.name}" loading="lazy"/>`:'';
       html+=`<div class="menu-item">
         ${pic}
@@ -937,7 +939,7 @@ function renderFrappes(items,photos){
 /* ── Listas: ninguna / circular / grande ── */
 function renderList(items,photos,twoCol=false,photoStyle='none'){
   const rows=items.map(i=>{
-    const src=photos[i.id];
+    const src=getPhotoSrcMenu(i.id,photos);
     let pic='';
     if(photoStyle==='circle'){
       pic=src?`<img class="item-thumb-circle" src="${src}" alt="${i.name}" loading="lazy"/>`:'';
@@ -971,7 +973,7 @@ function renderExtras(items){
 function renderExpendio(items,photos){
   return `<div class="expendio-block">`+
     items.map((i,idx)=>{
-      const src=photos[i.id];
+      const src=getPhotoSrcMenu(i.id,photos);
       const pic=src
         ?`<img class="exp-photo" src="${src}" alt="${i.name}" loading="lazy"/>`
         :`<div class="exp-photo-ph"></div>`;
@@ -1132,6 +1134,7 @@ function showBranchSelector(){
 async function renderMenu(){
   const suc=getSucursal();
   if(!suc){showBranchSelector();return;}
+  _currentSuc=suc;
   const disabled=getSucDisabledMenu();
   const items=loadMenu().filter(i=>i.available&&!disabled.includes(i.id));
   const photos=await getAllPhotos();
